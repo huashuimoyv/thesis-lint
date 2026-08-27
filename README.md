@@ -121,13 +121,19 @@ thesislint 论文.docx --strict       # CI 中使用：有警告也算失败
 ## 💡 让你的学校被第一个支持
 
 Roadmap 中的「学校规则预设包」会为每所学校维护一份检查配置。
-如果你希望 `rules/<你的学校>.json` 尽快出现，欢迎提 issue 附上学校的论文格式要求文档，
-或者直接成为第一批贡献者！
+如果你希望 `rules/<你的学校>.json` 尽快出现：
+
+- 提 [issue](https://github.com/huashuimoyv/thesis-lint/issues) 并附上学校的论文格式要求文档
+- **不想折腾 GitHub？直接发邮件也行**：`1416922533@qq.com`，
+  主题写「学校名 + 论文格式要求」，附上格式文档（拍照/截图/PDF 都可以），我们看到就会排期收录
 
 ## 🤝 参与贡献
 
 规则集还不够全——这正是社区最能出力的地方。发现误报/漏报时，
 欢迎提 issue 并附上出错条目原文；提交新规则请附带对应测试用例。
+
+同样地，**不熟悉 GitHub 的同学直接发邮件到 `1416922533@qq.com` 反馈即可**，
+描述清楚「哪条参考文献 · 报告说了什么 · 实际应该是什么」，就是最有价值的反馈。
 
 ```bash
 git clone https://github.com/huashuimoyv/thesis-lint.git
