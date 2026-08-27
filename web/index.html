@@ -403,6 +403,21 @@ def web_fix(filename: str) -> str:
     a.click();
     URL.revokeObjectURL(a.href);
   });
+
+  /* 测试钩子：?autodemo=1 引擎就绪后自动跑示例；&autofix=1 再自动生成修正列表 */
+  const params = new URLSearchParams(location.search);
+  if (params.has("autodemo")) {
+    const chain = async () => {
+      await getEngine();
+      await checkDemo();
+      if (params.has("autofix")) {
+        // 等 web_check 渲染完成后再触发修正
+        for (let i = 0; i < 20 && busy; i++) await new Promise(r => setTimeout(r, 500));
+        await generateFix();
+      }
+    };
+    chain().catch(console.error);
+  }
   $("btnCopy").addEventListener("click", () => {
     navigator.clipboard.writeText(report.textContent)
       .then(() => setStage("✅ 已复制到剪贴板", false))
