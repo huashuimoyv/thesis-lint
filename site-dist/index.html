@@ -59,24 +59,6 @@
   #report .e { color: #ff7b72; font-weight: bold; }
   #report .w { color: #e3b341; font-weight: bold; }
   #report .h { color: #7ee787; }
-  .fixbtn { border-color: #bb800933; color: #e3b341; }
-  .fixbtn:hover:not(:disabled) { border-color: #e3b341; background: #2c2516; }
-  #fixPanel {
-    display: none; margin-top: 14px;
-    background: #121a12; border: 1px solid #1a7f3755; border-radius: 10px; padding: 16px;
-  }
-  .fixhead { margin-bottom: 10px; }
-  .fixhead b { color: #7ee787; }
-  .fixhead span { color: #8b949e; margin-left: 10px; font-size: .92em; }
-  #fixList {
-    background: #0a0e14; border: 1px solid #21262d; border-radius: 8px;
-    padding: 14px; font-family: Consolas, "Courier New", monospace;
-    font-size: 13.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-all;
-  }
-  #fixManual { margin-top: 10px; color: #e3b341; font-size: .92em; line-height: 1.7; display: none; }
-  #fixManual b { color: #ff7b72; }
-  .fixcaveat { margin-top: 10px; color: #8b949e; font-size: .88em; }
-  #fixActions { margin-top: 12px; display: flex; gap: 10px; }
   footer { margin-top: 26px; color: #8b949e; font-size: .9em; text-align: center; line-height: 1.9; }
   a { color: #58a6ff; text-decoration: none; }
   a:hover { text-decoration: underline; }
@@ -100,24 +82,7 @@
     <button class="primary" id="btnDemo" disabled>🐍 用示例论文试一试</button>
     <button id="btnCopy" disabled>复制报告</button>
     <button id="btnMd" disabled>下载 Markdown 报告</button>
-    <button id="btnFix" disabled class="fixbtn">🔧 生成修正后列表</button>
     <span id="engineBadge" class="lock">⏳ 引擎加载中…</span>
-  </div>
-
-  <div id="fixPanel">
-    <div class="fixhead">
-      <b>🔧 修正后的参考文献</b>
-      <span id="fixStats"></span>
-    </div>
-    <div id="fixList"></div>
-    <div id="fixManual"></div>
-    <div class="fixcaveat">
-      ⚠️ 已重新编号的列表请同步修改正文中的引用编号；粘贴回 Word 后建议再人工过一遍。
-    </div>
-    <div id="fixActions">
-      <button class="primary" id="btnFixCopy">📋 复制修正后全部条目</button>
-      <button id="btnFixTxt">下载为 txt</button>
-    </div>
   </div>
 
   <div id="stage"></div>
@@ -214,18 +179,6 @@ def web_demo(filename: str) -> str:
     doc.save(filename)
     return web_check(filename)
 
-def web_fix(filename: str) -> str:
-    import dataclasses
-    from thesislint.fixer import fix_entries
-    r = analyze(Path(filename))
-    result = fix_entries([e.text for e in r.entries])
-    data = {
-        "lines": result["lines"],
-        "summary": result["summary"],
-        "entries": [dataclasses.asdict(e) for e in result["results"]],
-    }
-    return json.dumps(data, ensure_ascii=False)
-
 "ready"
 `;
 
@@ -239,7 +192,6 @@ def web_fix(filename: str) -> str:
       return;
     }
     busy = true;
-    lastFilename = file.name;
     setButtons(false);
     try {
       const py = await getEngine();
@@ -259,7 +211,6 @@ def web_fix(filename: str) -> str:
   async function checkDemo() {
     if (busy) return;
     busy = true;
-    lastFilename = "__demo__.docx";
     setButtons(false);
     try {
       const py = await getEngine();
@@ -286,7 +237,6 @@ def web_fix(filename: str) -> str:
       report.style.display = "block";
       report.textContent = data.text;
       $("stats").style.display = "none";
-      $("fixPanel").style.display = "none";
       return;
     }
     $("stPass").textContent = `✅ ${data.stats.passed} 条通过`;
@@ -306,61 +256,11 @@ def web_fix(filename: str) -> str:
     $("btnCopy").disabled = false;
     $("btnMd").disabled = false;
     $("btnMd").dataset.md = data.markdown;
-    // 有条目才允许生成修正列表
-    $("btnFix").disabled = data.stats.total === 0;
-    $("fixPanel").style.display = "none";
   }
-
-  /* ---------- 自动修正 ---------- */
-  let lastFilename = null;
-
-  async function generateFix() {
-    if (busy || !lastFilename) return;
-    busy = true;
-    setButtons(false);
-    try {
-      const py = await getEngine();
-      setStage("正在生成修正后列表 …");
-      const jsonStr = await py.runPythonAsync(`web_fix(${JSON.stringify(lastFilename)})`);
-      renderFix(JSON.parse(jsonStr));
-      setStage("", false);
-    } catch (err) {
-      setStage("❌ 生成失败：" + (err.message || err), false);
-      console.error(err);
-    } finally {
-      busy = false;
-      setButtons(true);
-    }
-  }
-
-  function renderFix(data) {
-    const s = data.summary;
-    $("fixStats").textContent =
-      `共 ${s.total} 条 · 自动修正 ${s.auto_fixed} 条 · ${s.manual_needed} 条需人工处理` +
-      (s.renumbered ? " · 已重新编号" : "");
-    $("fixList").textContent = data.lines.join("\n");
-
-    const manual = data.entries.filter(e => e.unresolved.length > 0);
-    const m = $("fixManual");
-    if (manual.length) {
-      m.innerHTML = "<b>以下条目无法全自动修正，请人工处理：</b><br>" +
-        manual.map(e =>
-          `· 第 ${e.index} 条（${e.original.slice(0, 40)}…）：${e.unresolved.join("；")}`
-        ).join("<br>");
-      m.style.display = "block";
-    } else {
-      m.style.display = "none";
-    }
-    fixData = data.lines.join("\n");
-    $("fixPanel").style.display = "block";
-    $("fixPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }
-
-  let fixData = "";
 
   function setButtons(on) {
     $("btnDemo").disabled = !(on && enginePromise);
-    $("btnFix").disabled = !(on && lastFilename);
+    $("btnCopy").disabled = !on || !$("btnCopy").textContent || report.style.display === "none";
     if (on && report.style.display !== "none") { $("btnCopy").disabled = false; $("btnMd").disabled = false; }
   }
 
@@ -389,20 +289,6 @@ def web_fix(filename: str) -> str:
   });
 
   $("btnDemo").addEventListener("click", checkDemo);
-  $("btnFix").addEventListener("click", generateFix);
-  $("btnFixCopy").addEventListener("click", () => {
-    navigator.clipboard.writeText(fixData)
-      .then(() => setStage("✅ 修正后列表已复制，去 Word 里粘贴吧", false))
-      .catch(() => setStage("复制失败，请手动选择文本", false));
-  });
-  $("btnFixTxt").addEventListener("click", () => {
-    const blob = new Blob([fixData], { type: "text/plain;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "参考文献_修正后.txt";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  });
   $("btnCopy").addEventListener("click", () => {
     navigator.clipboard.writeText(report.textContent)
       .then(() => setStage("✅ 已复制到剪贴板", false))

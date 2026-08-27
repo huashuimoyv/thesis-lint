@@ -10,6 +10,7 @@
 - 本地路径：`C:\Users\Ameath\.zcode\workspace\default\thesis-lint`
 - 远端：`github.com/huashuimoyv/thesis-lint`（公开仓库，MIT）
 - 当前版本：v0.2.0（GitHub Release 含免安装便携版 exe，双击打开图形界面）
+- 在线版：https://huashuimoyv.github.io/thesis-lint/ （Pyodide 跑同一套 Python 规则，纯前端不上传）
 
 ## 架构（src 布局）
 
@@ -31,6 +32,9 @@ build/使用说明.txt               # 便携版压缩包内附的说明
 .github/workflows/ci.yml        # pytest 矩阵 (3.10/3.12/3.14)
 .github/workflows/release.yml   # 打 v* tag 自动构建便携版并发 Release
 .github/assets/demo.svg         # README 头图（手绘终端风格，内容与真实 CLI 输出逐字对齐）
+web/index.html                  # 网页版（v0.2.x+）：Pyodide + micropip 装本地 wheels，纯前端
+.github/workflows/pages.yml     # 构建 wheel + 收集 python-docx/typing_extensions wheel + 部署 Pages
+                                #   （lxml 用 Pyodide 官方 wasm 包，manifest.json 由 CI 生成供 JS 读取）
 ```
 
 ## 常用命令（本机环境）
@@ -68,7 +72,7 @@ git tag v0.1.1 && git push origin v0.1.1   # release.yml 自动：测试→PyIns
 
 ## Roadmap（按价值排序，尚未实现）
 
-0. ~~双击 GUI~~（v0.2.0 已完成）；下一个：**网页版**（Pyodide 复用同一套规则代码，托管 GitHub Pages）
+0. ~~双击 GUI~~（v0.2.0 已完成）；~~网页版~~（已上线 Pyodide + GitHub Pages）
 1. 更多字段级规则：页码格式、出版地：出版社校验、DOI 规范
 2. 正文引用 `[1][2]` 与文献表交叉核对
 3. 图表编号连续性、公式编号检查
