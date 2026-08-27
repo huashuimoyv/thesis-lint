@@ -1,0 +1,108 @@
+name: Release
+
+# 推送 v* 标签 => 构建 exe 并自动创建 GitHub Release；
+# 手动触发（Actions 页面 / gh workflow run）=> 只构建、产出 Artifact 干跑验证，不发版。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-portable:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]" pyinstaller
+
+      # 防止忘了改版本号就打 tag：pyproject 的 version 必须与标签一致
+      - name: Verify version matches tag
+        if: github.ref_type == 'tag'
+        shell: python
+        run: |
+          import os, sys, tomllib
+
+          expected = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          with open("pyproject.toml", "rb") as fh:
+              actual = tomllib.load(fh)["project"]["version"]
+          if actual != expected:
+              sys.exit(
+                  f"版本不一致：标签 {os.environ['GITHUB_REF_NAME']} 但 pyproject.toml 是 "
+                  f"{actual}。请先更新 pyproject.toml 再重新打 tag。"
+              )
+          print(f"版本一致：v{actual}")
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Build single-file executable
+        run: pyinstaller --onefile --clean --noconfirm --name thesislint build/portable_entry.py
+
+      - name: Package portable zip
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="dev-$(date +%Y%m%d-%H%M)"
+          fi
+          ZIPNAME="thesis-lint-v${VERSION}-windows-x64-portable.zip"
+
+          mkdir -p portable
+          cp dist/thesislint.exe "build/使用说明.txt" LICENSE portable/
+          python -m zipfile -c "$ZIPNAME" portable/thesislint.exe "portable/使用说明.txt" portable/LICENSE
+
+          HASH=$(sha256sum "$ZIPNAME" | cut -d' ' -f1)
+          echo "$HASH *$ZIPNAME" > "$ZIPNAME.sha256"
+          echo "$HASH" > release_sha256.txt
+          echo "ZIPNAME=$ZIPNAME" >> "$GITHUB_ENV"
+          echo "SHA256=$HASH" >> "$GITHUB_ENV"
+          ls -la
+
+      - name: Write release notes
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          cat > release_notes.md <<EOF
+          毕业论文「国标体检」工具 **${GITHUB_REF_NAME}** —— 检查 Word (.docx) 论文参考文献是否符合 GB/T 7714-2025。
+
+          ## 便携版说明
+          - 免安装、无需 Python，Windows 10+ x64
+          - 解压后在命令行运行：\`thesislint.exe 你的论文.docx\`（详见包内「使用说明.txt」）
+          - 程序未签名，SmartScreen 提示时选择“仍要运行”即可
+
+          ## 校验
+          \`\`\`
+          ${SHA256} *${ZIPNAME}
+          \`\`\`
+
+          完整变更与源码见 [CHANGELOG](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/main/README.md#roadmap)。
+          EOF
+
+      - name: Upload dry-run artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIPNAME }}
+          path: |
+            ${{ env.ZIPNAME }}
+            ${{ env.ZIPNAME }}.sha256
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: >
+          gh release create "${GITHUB_REF_NAME}"
+          "${ZIPNAME}" "${ZIPNAME}.sha256"
+          --title "${GITHUB_REF_NAME}"
+          --notes-file release_notes.md
