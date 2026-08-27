@@ -13,7 +13,9 @@ _毕业论文「国标体检」工具_
 
 <img src=".github/assets/demo.svg" width="880" alt="thesis-lint 运行效果：定位问题条目并给出国标依据"/>
 
-**[⬇️ 下载免安装便携版](https://github.com/huashuimoyv/thesis-lint/releases/latest)**
+**[🌐 在线版（免下载，浏览器直接用）](https://huashuimoyv.github.io/thesis-lint/)**
+·
+[⬇️ 下载免安装便携版](https://github.com/huashuimoyv/thesis-lint/releases/latest)
 ·
 [快速上手](#-快速上手)
 ·
@@ -52,7 +54,16 @@ flowchart LR
 ## 🚀 快速上手
 
 <details open>
-<summary><b>方式一：便携版（推荐，无需安装 Python）</b></summary>
+<summary><b>方式〇：在线版（零安装，推荐先试试）</b></summary>
+
+打开 **[huashuimoyv.github.io/thesis-lint](https://huashuimoyv.github.io/thesis-lint/)**，
+把论文拖进网页即可。文档在你的浏览器本地解析（WebAssembly），**不会上传到任何服务器**。
+首次打开需加载约 15 MB 引擎，之后浏览器缓存秒开。
+
+</details>
+
+<details>
+<summary><b>方式一：便携版（Windows 桌面）</b></summary>
 
 1. 从 [Releases](https://github.com/huashuimoyv/thesis-lint/releases/latest) 下载 `thesis-lint-vX.Y.Z-windows-x64-portable.zip`
 2. 解压到任意目录，**双击 `thesislint.exe`** 打开图形界面

@@ -1,0 +1,72 @@
+name: Pages
+
+# 构建网页版（Pyodide）并部署到 GitHub Pages。
+# wheels 目录放：thesis-lint 自身 + python-docx + typing_extensions 的纯 Python wheel；
+# lxml 由 Pyodide 官方 wasm 包在运行时加载，不走 wheels。
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "src/**", "pyproject.toml", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build thesis-lint wheel
+        run: |
+          pip install build
+          python -m build --wheel --outdir site-dist/wheels .
+
+      - name: Collect pure-python dependency wheels
+        run: |
+          pip download python-docx typing_extensions \
+            --only-binary :all: --no-deps -d site-dist/wheels
+          ls -la site-dist/wheels
+
+      - name: Generate wheel manifest
+        run: |
+          python - <<'EOF'
+          import json
+          from pathlib import Path
+
+          wheels = sorted(p.name for p in Path("site-dist/wheels").glob("*.whl"))
+          assert any(w.startswith("thesis_lint-") for w in wheels), "缺少 thesis-lint wheel"
+          Path("site-dist/wheels/manifest.json").write_text(
+              json.dumps({"wheels": wheels}), encoding="utf-8"
+          )
+          print("manifest:", wheels)
+          EOF
+
+      - name: Copy site files
+        run: cp -r web/* site-dist/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site-dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
