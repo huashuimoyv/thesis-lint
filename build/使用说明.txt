@@ -1,0 +1,28 @@
+thesis-lint v0.1.0 便携版（Windows x64）
+==========================================
+
+毕业论文「国标体检」工具 —— 检查 Word 论文参考文献是否符合 GB/T 7714-2025。
+
+【特点】
+免安装、无需 Python：解压后直接在命令行运行 thesislint.exe。
+
+【快速上手】
+1. 解压本压缩包到任意目录
+2. 按 Win+R 输入 cmd 打开命令行，cd 进入解压目录，例如：
+       cd C:\Users\you\Downloads\thesis-lint-v0.1.0-windows-x64-portable
+3. 运行：
+       thesislint.exe 你的论文.docx
+
+【常用参数】
+       thesislint.exe 论文.docx --format md      Markdown 格式报告
+       thesislint.exe 论文.docx --format json    JSON 格式报告
+       thesislint.exe 论文.docx --strict         有警告时也返回失败码
+
+【说明】
+- 首次运行启动约需 2~3 秒（单文件自解压），属正常现象
+- 程序未做代码签名，SmartScreen 若弹窗提示，选择“仍要运行”即可；
+  不放心可对照 Release 页面公布的 SHA256 校验值
+- 检查结果仅供参考，最终格式认定以学校要求为准
+
+项目主页与源码：https://github.com/huashuimoyv/thesis-lint
+问题反馈：https://github.com/huashuimoyv/thesis-lint/issues
