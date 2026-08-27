@@ -55,12 +55,12 @@ flowchart LR
 <summary><b>方式一：便携版（推荐，无需安装 Python）</b></summary>
 
 1. 从 [Releases](https://github.com/huashuimoyv/thesis-lint/releases/latest) 下载 `thesis-lint-vX.Y.Z-windows-x64-portable.zip`
-2. 解压到任意目录
-3. 命令行运行：
+2. 解压到任意目录，**双击 `thesislint.exe`** 打开图形界面
+3. 把论文**拖进窗口**（或点击选择文件），自动开始检查
+4. 结果显示在窗口里，可一键「复制报告」或「导出 Markdown」
 
-   ```bat
-   thesislint.exe 你的论文.docx
-   ```
+> 高级用户也可以在命令行直接带参数：`thesislint.exe 论文.docx`，行为与 pip 安装版一致。
+> 把 docx 直接拖到 exe 图标上同样会打开图形界面。
 
 </details>
 

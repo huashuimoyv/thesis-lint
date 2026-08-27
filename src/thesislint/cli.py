@@ -52,12 +52,28 @@ def main(argv: list[str] | None = None) -> int:
         prog="thesislint",
         description="毕业论文「国标体检」：检查 Word 文档参考文献是否符合 GB/T 7714-2025",
     )
-    parser.add_argument("docx", type=Path, help="待检查的 .docx 文件")
+    parser.add_argument("docx", type=Path, nargs="?", help="待检查的 .docx 文件")
     parser.add_argument("--section", default="参考文献", help="章节标题关键词（默认“参考文献”）")
     parser.add_argument("--format", choices=["text", "md", "json"], default="text", help="输出格式")
     parser.add_argument("--strict", action="store_true", help="存在警告时同样返回非零退出码")
 
-    args = parser.parse_args(argv)
+    raw = list(sys.argv[1:]) if argv is None else list(argv)
+
+    # 双模式分发：直接双击 exe（无参数）或从资源管理器拖文件到图标上时，
+    # 打开图形界面；真正的命令行调用行为完全不变。
+    if not any(a.startswith("-") for a in raw):
+        from .gui import should_launch_gui
+
+        if should_launch_gui(raw):
+            from .gui import run_gui
+
+            return run_gui()
+
+    args = parser.parse_args(raw)
+
+    if args.docx is None:
+        parser.print_help()
+        return 2
 
     _force_utf8_stdio()
 
