@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "thesis-lint"
+version = "0.1.0"
+description = "毕业论文「国标体检」工具 —— 检查 Word 论文的参考文献格式是否符合 GB/T 7714-2025 / Thesis checker for GB/T 7714 references in Word documents"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "huashuimoyv" }]
+requires-python = ">=3.10"
+keywords = ["thesis", "gbt7714", "docx", "reference", "checker", "论文", "参考文献"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: Chinese (Simplified)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Processing :: Markup",
+]
+dependencies = ["python-docx>=1.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+thesislint = "thesislint.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/thesislint"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
