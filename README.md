@@ -25,12 +25,21 @@ $ thesislint 我的论文.docx
 
 ## 安装
 
+**方式一：便携版（免安装 Python，推荐普通用户）**
+
+从 [Releases](https://github.com/huashuimoyv/thesis-lint/releases) 下载
+`thesis-lint-vX.Y.Z-windows-x64-portable.zip`，解压后直接运行：
+
+```bat
+thesislint.exe 你的论文.docx
+```
+
+**方式二：pip 安装（需要 Python 3.10+）**
+
 ```bash
 pip install thesis-lint   # 发布 PyPI 后可用；当前可从源码安装：
 pip install git+https://github.com/huashuimoyv/thesis-lint.git
 ```
-
-要求 Python 3.10+。
 
 ## 使用
 

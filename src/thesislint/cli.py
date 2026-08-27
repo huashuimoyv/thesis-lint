@@ -33,6 +33,20 @@ def analyze(path: Path, section_keyword: str = "参考文献") -> Report:
     return report
 
 
+def _force_utf8_stdio() -> None:
+    """Windows 控制台重定向输出时默认 GBK，遇到中文/特殊字符会崩溃。
+
+    统一切到 UTF-8（老终端无法显示的字符降级替换而不是报错）。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="thesislint",
@@ -44,6 +58,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strict", action="store_true", help="存在警告时同样返回非零退出码")
 
     args = parser.parse_args(argv)
+
+    _force_utf8_stdio()
 
     if args.docx.suffix.lower() != ".docx":
         print(f"暂只支持 .docx，收到的是 {args.docx.suffix}。请先用 Word 另存为 .docx。", file=sys.stderr)

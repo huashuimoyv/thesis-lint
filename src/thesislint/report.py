@@ -45,27 +45,27 @@ class Report:
 def build_text_report(report: Report) -> str:
     lines: list[str] = []
     if not report.found_section:
-        lines.append("❌ 未找到参考文献章节。请确认文档中有“参考文献”标题。")
+        lines.append("未找到参考文献章节。请确认文档中有“参考文献”标题。")
         return "\n".join(lines)
 
-    lines.append(f"📄 {report.source} —— 参考文献共 {len(report.entries)} 条\n")
+    lines.append(f"{report.source} —— 参考文献共 {len(report.entries)} 条")
+    lines.append("")
 
     for entry in report.entries:
         if not entry.issues:
             continue
         lines.append(f"[{entry.index}]（第 {entry.line} 行）{entry.text[:60]}{'…' if len(entry.text) > 60 else ''}")
         for issue in entry.issues:
-            mark = "❌" if issue.level == "ERROR" else "⚠️ "
+            mark = "[ERROR]" if issue.level == "ERROR" else "[WARN ]"
             lines.append(f"    {mark} {issue.code}: {issue.message}")
         lines.append("")
 
     for issue in report.section_issues:
-        mark = "❌" if issue.level == "ERROR" else "⚠️ "
+        mark = "[ERROR]" if issue.level == "ERROR" else "[WARN ]"
         lines.append(f"{mark} {issue.code}: {issue.message}")
 
     n_pass = len(report.entries) - sum(1 for e in report.entries if e.issues)
-    summary = f"\n体检结果：{n_pass} 条通过，{report.error_count} 个错误，{report.warn_count} 个警告"
-    lines.append(summary)
+    lines.append(f"体检结果：{n_pass} 条通过，{report.error_count} 个错误，{report.warn_count} 个警告")
     return "\n".join(lines)
 
 

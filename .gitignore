@@ -15,6 +15,11 @@ venv/
 .ruff_cache/
 .coverage
 
+# PyInstaller 产物
+build/thesislint/
+build/*.spec
+dist/
+
 # 编辑器
 .idea/
 .vscode/
