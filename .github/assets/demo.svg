@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="600" viewBox="0 0 920 600">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#161b22"/>
+      <stop offset="1" stop-color="#0d1117"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <!-- 终端窗口 -->
+  <rect x="20" y="16" width="880" height="568" rx="12" fill="url(#bg)" stroke="#30363d" stroke-width="1.5" filter="url(#shadow)"/>
+
+  <!-- 标题栏 -->
+  <rect x="21" y="17" width="878" height="44" rx="11" fill="#21262d"/>
+  <line x1="21" y1="60" x2="899" y2="60" stroke="#30363d" stroke-width="1.5"/>
+  <circle cx="46" cy="39" r="6.5" fill="#ff5f57"/>
+  <circle cx="70" cy="39" r="6.5" fill="#febc2e"/>
+  <circle cx="94" cy="39" r="6.5" fill="#28c840"/>
+  <text x="460" y="45" font-family="'Segoe UI',sans-serif" font-size="14" fill="#8b949e" text-anchor="middle">命令提示符 — thesislint</text>
+
+  <!-- 输出内容 -->
+  <g font-family="Consolas,'Courier New',monospace" font-size="14.5">
+    <!-- 提示符 -->
+    <text x="48" y="98"><tspan fill="#3fb950">C:\论文\</tspan><tspan fill="#e6edf3">thesislint.exe </tspan><tspan fill="#79c0ff">我的毕业论文.docx</tspan></text>
+
+    <text x="48" y="134" fill="#7ee787">我的毕业论文.docx —— 参考文献共 42 条</text>
+
+    <text x="48" y="170">
+      <tspan fill="#e6edf3">[7]（第 133 行）</tspan><tspan fill="#c9d1d9">李四. 论文名称. 学报, 2024.</tspan>
+    </text>
+    <text x="80" y="196">
+      <tspan fill="#ff7b72" font-weight="bold">[ERROR]</tspan>
+      <tspan fill="#ffa198"> E002:</tspan>
+      <tspan fill="#e6edf3"> 缺少文献类型标识，如 [J]、[M]、[D]、[C]、[EB/OL]</tspan>
+    </text>
+
+    <text x="48" y="248">
+      <tspan fill="#e6edf3">[12]（第 138 行）</tspan><tspan fill="#c9d1d9">张三, 李四, 王五, 赵六. 某某研究[J]. 学报, 2024, 1(1): 1-9</tspan>
+    </text>
+    <text x="80" y="274">
+      <tspan fill="#d29922" font-weight="bold">[WARN ]</tspan>
+      <tspan fill="#e3b341"> W003:</tspan>
+      <tspan fill="#e6edf3"> 作者超过 3 人时应只列前 3 名，后加 ", 等"</tspan>
+    </text>
+    <text x="80" y="300">
+      <tspan fill="#d29922" font-weight="bold">[WARN ]</tspan>
+      <tspan fill="#e3b341"> W006:</tspan>
+      <tspan fill="#e6edf3"> 条目未以句点"."结尾</tspan>
+    </text>
+
+    <!-- 分隔线 -->
+    <line x1="48" y1="330" x2="872" y2="330" stroke="#21262d" stroke-width="2"/>
+
+    <!-- 汇总 -->
+    <text x="48" y="366">
+      <tspan fill="#e6edf3">体检结果：</tspan>
+      <tspan fill="#7ee787" font-weight="bold">40 条通过</tspan>
+      <tspan fill="#e6edf3">，</tspan>
+      <tspan fill="#ff7b72" font-weight="bold">1 个错误</tspan>
+      <tspan fill="#e6edf3">，</tspan>
+      <tspan fill="#d29922" font-weight="bold">2 个警告</tspan>
+    </text>
+
+    <!-- 友好提示 -->
+    <rect x="48" y="396" width="824" height="64" rx="8" fill="#121d2f" stroke="#1f6feb" stroke-opacity="0.35"/>
+    <text x="68" y="423" fill="#79c0ff">--format md</text>
+    <text x="200" y="423" fill="#8b949e">输出 Markdown 报告 · --strict 警告也算失败 · 退出码可接入 CI</text>
+    <text x="68" y="447" fill="#79c0ff">$ pip install thesis-lint</text>
+    <text x="320" y="447" fill="#8b949e">或下载免安装便携版</text>
+  </g>
+
+  <!-- 底部角标 -->
+  <g font-family="'Segoe UI',sans-serif" font-size="13">
+    <text x="48" y="520" fill="#58a6ff" font-weight="bold" font-size="17">✓ GB/T 7714-2025</text>
+    <text x="268" y="520" fill="#58a6ff" font-weight="bold" font-size="17">✓ Word .docx 无需转换</text>
+    <text x="548" y="520" fill="#58a6ff" font-weight="bold" font-size="17">✓ 免安装 · 单文件 exe</text>
+    <text x="48" y="552" fill="#30363d" font-size="12">github.com/huashuimoyv/thesis-lint</text>
+  </g>
+</svg>
