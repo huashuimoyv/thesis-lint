@@ -63,15 +63,12 @@ flowchart LR
 </details>
 
 <details>
-<summary><b>方式一：便携版（Windows 桌面）</b></summary>
+<summary><b>方式一：便携版（Windows 桌面，深色图形界面）</b></summary>
 
 1. 从 [Releases](https://github.com/huashuimoyv/thesis-lint/releases/latest) 下载 `thesis-lint-vX.Y.Z-windows-x64-portable.zip`
-2. 解压到任意目录，**双击 `thesislint.exe`** 打开图形界面
-3. 把论文**拖进窗口**（或点击选择文件），自动开始检查
-4. 结果显示在窗口里，可一键「复制报告」或「导出 Markdown」
-
-> 高级用户也可以在命令行直接带参数：`thesislint.exe 论文.docx`，行为与 pip 安装版一致。
-> 把 docx 直接拖到 exe 图标上同样会打开图形界面。
+2. 解压后**双击 `thesislint.exe`**：拖入论文（或点击选择、直接拖到 exe 图标）自动体检
+3. 报告显示在窗口里，支持**生成修正后列表**并一键复制/导出，与网页版功能一致
+4. 高级用法：命令行带参数 `thesislint.exe 论文.docx --format md` 等，行为与 pip 安装版一致
 
 </details>
 

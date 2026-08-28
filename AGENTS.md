@@ -9,21 +9,28 @@
 
 - 本地路径：`C:\Users\Ameath\.zcode\workspace\default\thesis-lint`
 - 远端：`github.com/huashuimoyv/thesis-lint`（公开仓库，MIT）
-- 当前版本：v0.2.0（GitHub Release 含免安装便携版 exe，双击打开图形界面）
-- 在线版：https://huashuimoyv.github.io/thesis-lint/ （Pyodide 跑同一套 Python 规则，纯前端不上传）
+- 当前版本：v0.4.0（v0.2.0 图形界面；v0.3.0 自动修正+网页版；v0.4.0 GUI 深色重制+修正列表对齐网页）
+- 在线版：https://huashuimoyv.github.io/thesis-lint/ （Pyodide 跑同一套 Python 规则，纯前端不上传；
+  测试钩子 URL 参数 ?autodemo=1&autofix=1 自动跑示例并生成修正列表）
 
 ## 架构（src 布局）
 
 ```
 src/thesislint/
-  gui.py        # 图形界面（v0.2.0+）：拖拽/选文件 → 窗口内报告 → 复制/导出 Markdown。
+  gui.py        # 图形界面（v0.4.0 深色重制）：tkinter 纯手绘「夜间自习室」风格（配色常量与网页一致），
+                #   布局=字标头+海报态拖拽区(呼吸边框)+收拢态细条+工具条+双色报告+修正面板。
+                #   功能与网页对齐：生成修正后列表/复制/导出 txt。DPI 感知(SetProcessDpiAwareness)。
                 #   双模式分发规则（cli.main）：无参数=GUI；单个 docx 参数且 _launched_from_explorer()=GUI
                 #   （拖到 exe 图标）；其余=命令行。GUI 后台线程分析不冻 UI。
-                #   测试钩子：环境变量 THESISLINT_GUI_AUTOCLOSE_MS 让窗口自动关闭（冒烟测试用）。
+                #   测试钩子：THESISLINT_GUI_AUTOCLOSE_MS（自动关闭）、THESISLINT_GUI_AUTODEMO=1（自动跑
+                #   示例体检）、THESISLINT_GUI_AUTOFIX=1（体检后自动生成修正列表）。
                 #   拖拽依赖 tkinterdnd2（仅 win32 marker），失败自动降级为纯按钮模式。
   extractor.py  # 定位"参考文献"章节，逐条提取（自动合并 Word 折行条目），保留 [n] 序号原文
   checker.py    # 11 条规则引擎，ERROR/WARN 两级：缺序号/类型标识/年份/网址、序号重复跳号(段落级)、
                 #   作者>3人未加",等"(认可 et al.)、西文姓名未缩写、全角标点、缺尾句点、/OL缺引用日期
+  fixer.py      # 自动修正引擎（v0.3.0）：只做确定性变换（全角→半角、补尾句点、补序号/重编号、
+                #   作者>3人截断加等——作者区=主体开头到[TAG]前，末段>40字符视为含标题则放弃截断）；
+                #   不确定的进 unresolved 让人工处理；修正后重跑 checker 统计剩余警告
   report.py     # Report/EntryResult 数据类 + text/markdown/json 三种报告
   cli.py        # argparse 入口；--section/--format/--strict；退出码 0过/1错/2用法
 tests/          # 22 个测试全绿（checker 规则单测 + 用 python-docx 现场造 docx 的端到端测试）
@@ -32,7 +39,10 @@ build/使用说明.txt               # 便携版压缩包内附的说明
 .github/workflows/ci.yml        # pytest 矩阵 (3.10/3.12/3.14)
 .github/workflows/release.yml   # 打 v* tag 自动构建便携版并发 Release
 .github/assets/demo.svg         # README 头图（手绘终端风格，内容与真实 CLI 输出逐字对齐）
-web/index.html                  # 网页版（v0.2.x+）：Pyodide + micropip 装本地 wheels，纯前端
+web/index.html                  # 网页版（v0.2.x+）：Pyodide + micropip 装本地 wheels，纯前端。
+                                #   明暗双主题：颜色全走 CSS 变量，默认跟随系统(prefers-color-scheme)，
+                                #   头部按钮手动切换 auto→light→dark 存 localStorage；
+                                #   ?theme=light|dark 强制主题、?autodemo=1&autofix=1 自动链路（测试钩子）
 .github/workflows/pages.yml     # 构建 wheel + 收集 python-docx/typing_extensions wheel + 部署 Pages
                                 #   （lxml 用 Pyodide 官方 wasm 包，manifest.json 由 CI 生成供 JS 读取）
 ```
