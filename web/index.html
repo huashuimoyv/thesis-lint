@@ -6,34 +6,104 @@
 <title>thesis-lint · 论文参考文献在线体检</title>
 <meta name="description" content="检查 Word 论文参考文献是否符合 GB/T 7714-2025。文档在浏览器本地解析，不会上传。">
 <style>
+  /* ---------- 主题变量：深色为默认，浅色跟随系统/手动切换 ---------- */
   :root {
     color-scheme: dark;
     --bg: #0b0e13;
+    --vignette: #101825;
     --surface: #0f141b;
     --raise: #131a23;
     --line: #1e2630;
+    --line-strong: #3b4a5d;
     --text: #e6edf3;
     --muted: #8b949e;
     --faint: #56606b;
     --accent: #5b9bff;
     --ok: #3fb950;
     --ok-hi: #7ee787;
+    --ok-soft: #1a3f2a;
+    --ok-soft-hover: #215237;
+    --ok-border: #2ea04355;
     --warn: #d29922;
+    --warn-hi: #e3b341;
     --err: #ff7b72;
+    --drop-line: #2b3a4d;
+    --drop-glow: #14203366;
+    --drop-over-bg: #14203399;
+    --glow-a: #5b9bff26;
+    --glow-b: #5b9bff40;
+    --fix-line: #1f3527;
+    --fix-accent: #2ea04366;
+    --fixbtn-text: #e3b341;
+    --fixbtn-border: #bb800940;
+    --fixbtn-hover-bg: #241d12;
     --mono: "Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace;
   }
+  :root[data-theme="light"] { color-scheme: light; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme]) { color-scheme: light; }
+  }
+
+  :root[data-theme="light"] {
+    --bg: #f6f8fa;
+    --vignette: #eaf0f8;
+    --surface: #ffffff;
+    --raise: #f0f3f7;
+    --line: #d8dee6;
+    --line-strong: #b6c2d2;
+    --text: #1f2328;
+    --muted: #59636e;
+    --faint: #8c959f;
+    --accent: #1f6feb;
+    --ok: #1a7f37;
+    --ok-hi: #116329;
+    --ok-soft: #dafbe1;
+    --ok-soft-hover: #c7f0d2;
+    --ok-border: #1a7f3740;
+    --warn: #9a6700;
+    --warn-hi: #9a6700;
+    --err: #cf222e;
+    --drop-line: #b6c4d6;
+    --drop-glow: #e8f0fc;
+    --drop-over-bg: #dbe8fb;
+    --glow-a: #1f6feb14;
+    --glow-b: #1f6feb2e;
+    --fix-line: #d9f0e1;
+    --fix-accent: #1a7f3766;
+    --fixbtn-text: #9a6700;
+    --fixbtn-border: #d4a72c66;
+    --fixbtn-hover-bg: #fff8c5;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme]) {
+      --bg: #f6f8fa; --vignette: #eaf0f8;
+      --surface: #ffffff; --raise: #f0f3f7;
+      --line: #d8dee6; --line-strong: #b6c2d2;
+      --text: #1f2328; --muted: #59636e; --faint: #8c959f;
+      --accent: #1f6feb;
+      --ok: #1a7f37; --ok-hi: #116329;
+      --ok-soft: #dafbe1; --ok-soft-hover: #c7f0d2; --ok-border: #1a7f3740;
+      --warn: #9a6700; --warn-hi: #9a6700; --err: #cf222e;
+      --drop-line: #b6c4d6; --drop-glow: #e8f0fc; --drop-over-bg: #dbe8fb;
+      --glow-a: #1f6feb14; --glow-b: #1f6feb2e;
+      --fix-line: #d9f0e1; --fix-accent: #1a7f3766;
+      --fixbtn-text: #9a6700; --fixbtn-border: #d4a72c66; --fixbtn-hover-bg: #fff8c5;
+    }
+  }
+
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
   body {
     font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
     background:
-      radial-gradient(90rem 40rem at 50% -10rem, #101825 0%, transparent 60%),
+      radial-gradient(90rem 40rem at 50% -10rem, var(--vignette) 0%, transparent 60%),
       var(--bg);
     color: var(--text);
     min-height: 100vh;
     display: flex; flex-direction: column; align-items: center;
     padding: 0 20px 40px;
     -webkit-font-smoothing: antialiased;
+    transition: background-color .25s, color .25s;
   }
 
   /* ---------- 头部 ---------- */
@@ -46,20 +116,25 @@
   .wordmark { display: flex; align-items: center; gap: 10px; font-size: 1.06em; }
   .wordmark b { letter-spacing: .01em; }
   .wordmark b span { color: var(--accent); }
-  .wordmark svg { display: block; }
-  header nav { display: flex; align-items: center; gap: 18px; font-size: .92em; }
+  .wordmark svg { display: block; color: var(--accent); }
+  header nav { display: flex; align-items: center; gap: 16px; font-size: .92em; }
   header nav a { color: var(--muted); text-decoration: none; transition: color .15s; }
   header nav a:hover { color: var(--text); }
+  #themeBtn {
+    border: none; background: transparent; padding: 4px 6px;
+    font-size: 1.05em; line-height: 1; color: var(--muted); cursor: pointer;
+  }
+  #themeBtn:hover { color: var(--text); background: transparent; }
 
   /* ---------- 主视觉：拖入区 ---------- */
   #drop {
     position: relative;
     width: 100%; max-width: 920px;
     min-height: 46vh;
-    border: 1px dashed #2b3a4d;
+    border: 1px dashed var(--drop-line);
     border-radius: 18px;
     background:
-      radial-gradient(46rem 22rem at 50% 18%, #14203366 0%, transparent 70%),
+      radial-gradient(46rem 22rem at 50% 18%, var(--drop-glow) 0%, transparent 70%),
       var(--surface);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; cursor: pointer; user-select: none;
@@ -68,21 +143,20 @@
     animation: rise .55s .06s ease both;
     overflow: hidden;
   }
-  #drop::before {  /* 呼吸光晕 */
+  #drop::before {
     content: ""; position: absolute; inset: -1px;
     border-radius: inherit;
-    box-shadow: 0 0 0 0 #5b9bff00;
     animation: breathe 4s ease-in-out infinite;
     pointer-events: none;
   }
   @keyframes breathe {
-    0%, 100% { box-shadow: 0 0 42px -18px #5b9bff26; }
-    50%      { box-shadow: 0 0 60px -14px #5b9bff40; }
+    0%, 100% { box-shadow: 0 0 42px -18px var(--glow-a); }
+    50%      { box-shadow: 0 0 60px -14px var(--glow-b); }
   }
-  #drop.over { border-color: var(--accent); border-style: solid; background-color: #14203399; }
+  #drop.over { border-color: var(--accent); border-style: solid; background-color: var(--drop-over-bg); }
   #drop.over .t-default { display: none; }
-  #drop.over .t-over { display: block; }
-  .t-over { display: none; color: var(--accent); }
+  #drop.over .t-over { display: block; color: var(--accent); }
+  .t-over { display: none; }
 
   #drop h1 {
     font-size: clamp(26px, 4.6vw, 38px);
@@ -95,7 +169,6 @@
   #drop .hint { margin-top: 26px; color: var(--faint); font-size: .88em; }
   #drop .hint em { color: var(--warn); font-style: normal; }
 
-  /* 检查中的扫描光条 */
   #drop.busy::after {
     content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
     background: linear-gradient(90deg, transparent, var(--accent), transparent);
@@ -104,7 +177,6 @@
   }
   @keyframes scan { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 
-  /* 有结果后收拢为细条 */
   body.has-result #drop { min-height: 0; padding: 15px 22px; border-radius: 12px; cursor: pointer; }
   body.has-result #drop::before { animation: none; box-shadow: none; }
   body.has-result .hero-big { display: none; }
@@ -117,7 +189,6 @@
   .done-row .re { color: var(--accent); font-size: .9em; white-space: nowrap; }
   body.has-result #drop .sub, body.has-result #drop .hint, body.has-result #engineBadge { display: none; }
 
-  /* ---------- 引擎状态（首屏时在拖入区底部） ---------- */
   #engineBadge { margin-top: 24px; color: var(--muted); font-size: .9em; transition: color .3s; }
 
   /* ---------- 工具条 ---------- */
@@ -134,13 +205,13 @@
     padding: 7px 14px; cursor: pointer;
     transition: color .15s, border-color .15s, background-color .15s, transform .06s;
   }
-  button:hover:not(:disabled) { color: var(--text); border-color: #3b4a5d; background: var(--raise); }
+  button:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); background: var(--raise); }
   button:active:not(:disabled) { transform: translateY(1px); }
   button:disabled { opacity: .38; cursor: not-allowed; }
-  button.primary { background: #1a3f2a; border-color: #2ea04355; color: var(--ok-hi); font-weight: 600; }
-  button.primary:hover:not(:disabled) { background: #215237; border-color: #2ea043; color: #cfffdd; }
-  button.fixbtn { color: #e3b341; border-color: #bb800940; }
-  button.fixbtn:hover:not(:disabled) { border-color: #e3b341; background: #241d12; }
+  button.primary { background: var(--ok-soft); border-color: var(--ok-border); color: var(--ok-hi); font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: var(--ok-soft-hover); border-color: var(--ok); color: var(--ok-hi); }
+  button.fixbtn { color: var(--fixbtn-text); border-color: var(--fixbtn-border); }
+  button.fixbtn:hover:not(:disabled) { border-color: var(--warn); background: var(--fixbtn-hover-bg); }
 
   #stage { width: 100%; max-width: 920px; color: var(--muted); font-size: .93em; min-height: 1.6em; padding: 8px 2px 0; }
   #stage .dot { display: inline-block; animation: blink 1.2s infinite; margin-right: 8px; color: var(--accent); }
@@ -157,14 +228,14 @@
   .stat b { font-family: var(--mono); font-size: 1.5em; font-weight: 600; margin-right: 6px; }
   .stat.ok b { color: var(--ok-hi); }
   .stat.err b { color: var(--err); }
-  .stat.warn b { color: #e3b341; }
+  .stat.warn b { color: var(--warn-hi); }
 
   /* ---------- 报告 ---------- */
   #report {
     display: none; width: 100%; max-width: 920px;
     margin-top: 14px;
     background: var(--surface);
-    border: 1px solid var(--line); border-left: 2px solid #2b3a4d;
+    border: 1px solid var(--line); border-left: 2px solid var(--drop-line);
     border-radius: 10px;
     padding: 20px 22px;
     font-family: var(--mono); font-size: 13.5px; line-height: 1.75;
@@ -172,7 +243,7 @@
     animation: rise .45s ease both;
   }
   #report .e { color: var(--err); font-weight: bold; }
-  #report .w { color: #e3b341; font-weight: bold; }
+  #report .w { color: var(--warn-hi); font-weight: bold; }
   #report .h { color: var(--ok-hi); }
 
   /* ---------- 修正面板 ---------- */
@@ -186,12 +257,12 @@
   .fixhead b { font-size: 1.05em; color: var(--ok-hi); font-weight: 650; }
   .fixhead span { color: var(--muted); font-size: .92em; }
   #fixList {
-    background: var(--surface); border: 1px solid #1f3527; border-left: 2px solid #2ea04366;
+    background: var(--surface); border: 1px solid var(--fix-line); border-left: 2px solid var(--fix-accent);
     border-radius: 10px; padding: 18px 22px;
     font-family: var(--mono); font-size: 13.5px; line-height: 1.8;
     white-space: pre-wrap; word-break: break-all;
   }
-  #fixManual { margin-top: 12px; color: #e3b341; font-size: .92em; line-height: 1.8; display: none; }
+  #fixManual { margin-top: 12px; color: var(--warn-hi); font-size: .92em; line-height: 1.8; display: none; }
   #fixManual b { color: var(--err); }
   .fixcaveat { margin-top: 12px; color: var(--faint); font-size: .88em; }
   #fixActions { margin-top: 14px; display: flex; gap: 10px; }
@@ -223,13 +294,14 @@
 <header>
   <div class="wordmark">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 3 2 8l10 5 10-5-10-5Z" stroke="#5b9bff" stroke-width="1.6" stroke-linejoin="round"/>
-      <path d="M6 10.5V15c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5" stroke="#5b9bff" stroke-width="1.6" stroke-linecap="round"/>
-      <path d="M22 8v5" stroke="#5b9bff" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M12 3 2 8l10 5 10-5-10-5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M6 10.5V15c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M22 8v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
     </svg>
     <b>thesis<span>·</span>lint</b>
   </div>
   <nav>
+    <button id="themeBtn" title="切换主题（自动 → 浅色 → 深色）">◐</button>
     <a href="https://github.com/huashuimoyv/thesis-lint" target="_blank" rel="noopener">GitHub</a>
     <a href="mailto:1416922533@qq.com">反馈</a>
   </nav>
@@ -301,6 +373,29 @@
 (() => {
   const $ = id => document.getElementById(id);
   const stage = $("stage"), report = $("report"), drop = $("drop");
+
+  /* ---------- 主题切换：自动 → 浅色 → 深色，记忆在 localStorage ---------- */
+  const THEME_KEY = "thesislint-theme";
+  const rootEl = document.documentElement;
+  const themeBtn = $("themeBtn");
+  const mqLight = matchMedia("(prefers-color-scheme: light)");
+  let themeMode = localStorage.getItem(THEME_KEY) || "auto";
+
+  function applyTheme(mode) {
+    themeMode = mode;
+    const resolved = mode === "auto" ? (mqLight.matches ? "light" : "dark") : mode;
+    if (mode === "auto") delete rootEl.dataset.theme;      // 交给媒体查询
+    else rootEl.dataset.theme = resolved;                   // 显式覆盖
+    themeBtn.textContent = mode === "light" ? "☀️" : mode === "dark" ? "🌙" : "◐";
+    themeBtn.title = `当前：${mode === "auto" ? "跟随系统" : mode === "light" ? "浅色" : "深色"}（点击切换）`;
+  }
+  themeBtn.addEventListener("click", () => {
+    themeMode = themeMode === "auto" ? "light" : themeMode === "light" ? "dark" : "auto";
+    localStorage.setItem(THEME_KEY, themeMode);
+    applyTheme(themeMode);
+  });
+  mqLight.addEventListener("change", () => { if (themeMode === "auto") applyTheme("auto"); });
+  applyTheme(themeMode);
 
   function setStage(msg, spin = true) {
     stage.innerHTML = spin ? `<span class="dot">▶</span>${msg}` : msg;
@@ -573,8 +668,12 @@ def web_fix(filename: str) -> str:
     URL.revokeObjectURL(a.href);
   });
 
-  /* 测试钩子：?autodemo=1 引擎就绪后自动跑示例；&autofix=1 再自动生成修正列表 */
+  /* 测试钩子：?autodemo=1 引擎就绪后自动跑示例；&autofix=1 再自动生成修正列表；
+     &theme=light|dark 强制主题供测试 */
   const params = new URLSearchParams(location.search);
+  if (params.get("theme") === "light" || params.get("theme") === "dark") {
+    applyTheme(params.get("theme"));
+  }
   if (params.has("autodemo")) {
     const chain = async () => {
       await getEngine();
