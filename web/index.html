@@ -6,143 +6,301 @@
 <title>thesis-lint · 论文参考文献在线体检</title>
 <meta name="description" content="检查 Word 论文参考文献是否符合 GB/T 7714-2025。文档在浏览器本地解析，不会上传。">
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    color-scheme: dark;
+    --bg: #0b0e13;
+    --surface: #0f141b;
+    --raise: #131a23;
+    --line: #1e2630;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --faint: #56606b;
+    --accent: #5b9bff;
+    --ok: #3fb950;
+    --ok-hi: #7ee787;
+    --warn: #d29922;
+    --err: #ff7b72;
+    --mono: "Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
   body {
-    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-    background: #0d1117; color: #e6edf3; min-height: 100vh;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    background:
+      radial-gradient(90rem 40rem at 50% -10rem, #101825 0%, transparent 60%),
+      var(--bg);
+    color: var(--text);
+    min-height: 100vh;
     display: flex; flex-direction: column; align-items: center;
-    padding: 24px 16px 48px;
+    padding: 0 20px 40px;
+    -webkit-font-smoothing: antialiased;
   }
-  header { text-align: center; margin-bottom: 20px; }
-  header h1 { font-size: 1.7em; margin-bottom: 6px; }
-  header h1 span { color: #58a6ff; }
-  header p { color: #8b949e; }
-  .card {
-    width: 100%; max-width: 860px;
-    background: #161b22; border: 1px solid #30363d;
-    border-radius: 12px; padding: 20px;
+
+  /* ---------- 头部 ---------- */
+  header {
+    width: 100%; max-width: 920px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 0 18px;
+    animation: rise .5s ease both;
   }
+  .wordmark { display: flex; align-items: center; gap: 10px; font-size: 1.06em; }
+  .wordmark b { letter-spacing: .01em; }
+  .wordmark b span { color: var(--accent); }
+  .wordmark svg { display: block; }
+  header nav { display: flex; align-items: center; gap: 18px; font-size: .92em; }
+  header nav a { color: var(--muted); text-decoration: none; transition: color .15s; }
+  header nav a:hover { color: var(--text); }
+
+  /* ---------- 主视觉：拖入区 ---------- */
   #drop {
-    border: 2px dashed #388bfd66; border-radius: 10px;
-    background: #121d2f; text-align: center;
-    padding: 44px 16px; cursor: pointer; user-select: none;
-    transition: all .15s ease;
+    position: relative;
+    width: 100%; max-width: 920px;
+    min-height: 46vh;
+    border: 1px dashed #2b3a4d;
+    border-radius: 18px;
+    background:
+      radial-gradient(46rem 22rem at 50% 18%, #14203366 0%, transparent 70%),
+      var(--surface);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; cursor: pointer; user-select: none;
+    padding: 48px 24px;
+    transition: border-color .2s, background-color .2s, min-height .35s ease, padding .35s ease;
+    animation: rise .55s .06s ease both;
+    overflow: hidden;
   }
-  #drop:hover, #drop.over { background: #1a2740; border-color: #388bfd; }
-  #drop .big { font-size: 1.25em; color: #79c0ff; margin-bottom: 6px; }
-  #drop .sub { color: #8b949e; font-size: .92em; }
-  #drop .sub em { color: #d29922; font-style: normal; }
-  #actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  #drop::before {  /* 呼吸光晕 */
+    content: ""; position: absolute; inset: -1px;
+    border-radius: inherit;
+    box-shadow: 0 0 0 0 #5b9bff00;
+    animation: breathe 4s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes breathe {
+    0%, 100% { box-shadow: 0 0 42px -18px #5b9bff26; }
+    50%      { box-shadow: 0 0 60px -14px #5b9bff40; }
+  }
+  #drop.over { border-color: var(--accent); border-style: solid; background-color: #14203399; }
+  #drop.over .t-default { display: none; }
+  #drop.over .t-over { display: block; }
+  .t-over { display: none; color: var(--accent); }
+
+  #drop h1 {
+    font-size: clamp(26px, 4.6vw, 38px);
+    font-weight: 650; letter-spacing: .01em;
+    margin-bottom: 14px;
+  }
+  #drop .sub { color: var(--muted); font-size: .98em; line-height: 2; }
+  #drop .sub b { color: var(--text); font-weight: 600; }
+  #drop .sub .dot { color: var(--faint); margin: 0 10px; }
+  #drop .hint { margin-top: 26px; color: var(--faint); font-size: .88em; }
+  #drop .hint em { color: var(--warn); font-style: normal; }
+
+  /* 检查中的扫描光条 */
+  #drop.busy::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    background-size: 40% 100%; background-repeat: no-repeat;
+    animation: scan 1.1s linear infinite;
+  }
+  @keyframes scan { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+
+  /* 有结果后收拢为细条 */
+  body.has-result #drop { min-height: 0; padding: 15px 22px; border-radius: 12px; cursor: pointer; }
+  body.has-result #drop::before { animation: none; box-shadow: none; }
+  body.has-result .hero-big { display: none; }
+  .done-row { display: none; align-items: center; gap: 12px; width: 100%; }
+  body.has-result .done-row { display: flex; }
+  .done-row .name {
+    font-family: var(--mono); font-size: .95em; color: var(--ok-hi);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .done-row .re { color: var(--accent); font-size: .9em; white-space: nowrap; }
+  body.has-result #drop .sub, body.has-result #drop .hint, body.has-result #engineBadge { display: none; }
+
+  /* ---------- 引擎状态（首屏时在拖入区底部） ---------- */
+  #engineBadge { margin-top: 24px; color: var(--muted); font-size: .9em; transition: color .3s; }
+
+  /* ---------- 工具条 ---------- */
+  #actions {
+    width: 100%; max-width: 920px;
+    display: none; gap: 8px; flex-wrap: wrap; align-items: center;
+    padding: 16px 0 4px;
+  }
+  body.has-result #actions { display: flex; animation: rise .4s ease both; }
   button {
-    background: #21262d; color: #e6edf3; border: 1px solid #364049;
-    border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: .95em;
+    font-family: inherit; font-size: .92em;
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 14px; cursor: pointer;
+    transition: color .15s, border-color .15s, background-color .15s, transform .06s;
   }
-  button:hover:not(:disabled) { background: #2c3642; border-color: #58a6ff; }
-  button:disabled { opacity: .45; cursor: not-allowed; }
-  button.primary { background: #238636; border-color: #2ea043; font-weight: 600; }
-  button.primary:hover:not(:disabled) { background: #2ea043; }
-  #stage { margin-top: 14px; color: #8b949e; font-size: .95em; min-height: 1.4em; }
-  #stage .dot { display: inline-block; animation: blink 1.2s infinite; margin-right: 6px; color: #58a6ff; }
-  @keyframes blink { 50% { opacity: .25; } }
-  #stats { display: none; gap: 10px; margin: 14px 0 4px; flex-wrap: wrap; }
-  .stat { border-radius: 6px; padding: 4px 12px; font-size: .92em; border: 1px solid; }
-  .stat.ok   { color: #7ee787; border-color: #1a7f37; background: #12261e; }
-  .stat.err  { color: #ff7b72; border-color: #b62324; background: #25171c; }
-  .stat.warn { color: #e3b341; border-color: #9e6a03; background: #241d12; }
+  button:hover:not(:disabled) { color: var(--text); border-color: #3b4a5d; background: var(--raise); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .38; cursor: not-allowed; }
+  button.primary { background: #1a3f2a; border-color: #2ea04355; color: var(--ok-hi); font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: #215237; border-color: #2ea043; color: #cfffdd; }
+  button.fixbtn { color: #e3b341; border-color: #bb800940; }
+  button.fixbtn:hover:not(:disabled) { border-color: #e3b341; background: #241d12; }
+
+  #stage { width: 100%; max-width: 920px; color: var(--muted); font-size: .93em; min-height: 1.6em; padding: 8px 2px 0; }
+  #stage .dot { display: inline-block; animation: blink 1.2s infinite; margin-right: 8px; color: var(--accent); }
+  @keyframes blink { 50% { opacity: .2; } }
+
+  /* ---------- 统计 ---------- */
+  #stats {
+    display: none; gap: 22px; flex-wrap: wrap;
+    width: 100%; max-width: 920px;
+    padding: 18px 2px 2px;
+    align-items: baseline;
+  }
+  .stat { font-size: 1.02em; color: var(--muted); }
+  .stat b { font-family: var(--mono); font-size: 1.5em; font-weight: 600; margin-right: 6px; }
+  .stat.ok b { color: var(--ok-hi); }
+  .stat.err b { color: var(--err); }
+  .stat.warn b { color: #e3b341; }
+
+  /* ---------- 报告 ---------- */
   #report {
-    display: none; margin-top: 12px;
-    background: #0a0e14; border: 1px solid #21262d; border-radius: 10px;
-    padding: 18px; font-family: Consolas, "Courier New", monospace;
-    font-size: 13.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-all;
+    display: none; width: 100%; max-width: 920px;
+    margin-top: 14px;
+    background: var(--surface);
+    border: 1px solid var(--line); border-left: 2px solid #2b3a4d;
+    border-radius: 10px;
+    padding: 20px 22px;
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.75;
+    white-space: pre-wrap; word-break: break-all;
+    animation: rise .45s ease both;
   }
-  #report .e { color: #ff7b72; font-weight: bold; }
+  #report .e { color: var(--err); font-weight: bold; }
   #report .w { color: #e3b341; font-weight: bold; }
-  #report .h { color: #7ee787; }
-  .fixbtn { border-color: #bb800933; color: #e3b341; }
-  .fixbtn:hover:not(:disabled) { border-color: #e3b341; background: #2c2516; }
+  #report .h { color: var(--ok-hi); }
+
+  /* ---------- 修正面板 ---------- */
   #fixPanel {
-    display: none; margin-top: 14px;
-    background: #121a12; border: 1px solid #1a7f3755; border-radius: 10px; padding: 16px;
+    display: none; width: 100%; max-width: 920px;
+    margin-top: 26px; padding-top: 22px;
+    border-top: 1px solid var(--line);
+    animation: rise .5s ease both;
   }
-  .fixhead { margin-bottom: 10px; }
-  .fixhead b { color: #7ee787; }
-  .fixhead span { color: #8b949e; margin-left: 10px; font-size: .92em; }
+  .fixhead { margin-bottom: 12px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .fixhead b { font-size: 1.05em; color: var(--ok-hi); font-weight: 650; }
+  .fixhead span { color: var(--muted); font-size: .92em; }
   #fixList {
-    background: #0a0e14; border: 1px solid #21262d; border-radius: 8px;
-    padding: 14px; font-family: Consolas, "Courier New", monospace;
-    font-size: 13.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-all;
+    background: var(--surface); border: 1px solid #1f3527; border-left: 2px solid #2ea04366;
+    border-radius: 10px; padding: 18px 22px;
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.8;
+    white-space: pre-wrap; word-break: break-all;
   }
-  #fixManual { margin-top: 10px; color: #e3b341; font-size: .92em; line-height: 1.7; display: none; }
-  #fixManual b { color: #ff7b72; }
-  .fixcaveat { margin-top: 10px; color: #8b949e; font-size: .88em; }
-  #fixActions { margin-top: 12px; display: flex; gap: 10px; }
-  footer { margin-top: 26px; color: #8b949e; font-size: .9em; text-align: center; line-height: 1.9; }
-  a { color: #58a6ff; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .lock { color: #d29922; }
+  #fixManual { margin-top: 12px; color: #e3b341; font-size: .92em; line-height: 1.8; display: none; }
+  #fixManual b { color: var(--err); }
+  .fixcaveat { margin-top: 12px; color: var(--faint); font-size: .88em; }
+  #fixActions { margin-top: 14px; display: flex; gap: 10px; }
+
+  /* ---------- 页脚 ---------- */
+  footer {
+    margin-top: 64px; padding-top: 20px;
+    border-top: 1px solid var(--line);
+    width: 100%; max-width: 920px;
+    color: var(--faint); font-size: .88em; line-height: 2;
+    display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  }
+  footer a { color: var(--muted); text-decoration: none; }
+  footer a:hover { color: var(--accent); }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  @media (max-width: 640px) {
+    #drop { min-height: 40vh; }
+    #stats { gap: 14px; }
+    footer { flex-direction: column; }
+  }
 </style>
 </head>
 <body>
+
 <header>
-  <h1>🎓 thesis<span>·</span>lint</h1>
-  <p>Word 论文参考文献「国标体检」—— 是否符合 GB/T 7714-2025，3 秒见分晓</p>
+  <div class="wordmark">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 3 2 8l10 5 10-5-10-5Z" stroke="#5b9bff" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M6 10.5V15c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5" stroke="#5b9bff" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M22 8v5" stroke="#5b9bff" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>
+    <b>thesis<span>·</span>lint</b>
+  </div>
+  <nav>
+    <a href="https://github.com/huashuimoyv/thesis-lint" target="_blank" rel="noopener">GitHub</a>
+    <a href="mailto:1416922533@qq.com">反馈</a>
+  </nav>
 </header>
 
-<div class="card">
-  <div id="drop">
-    <div class="big">📄 将论文 .docx 拖到这里</div>
-    <div class="sub">或点击选择文件 · 文档<b>仅在浏览器本地解析</b>，不会上传到任何服务器</div>
-    <div class="sub" style="margin-top:6px">只支持 .docx<em>（.doc 请先用 Word 另存为 .docx）</em></div>
-  </div>
-
-  <div id="actions">
-    <button class="primary" id="btnDemo" disabled>🐍 用示例论文试一试</button>
-    <button id="btnCopy" disabled>复制报告</button>
-    <button id="btnMd" disabled>下载 Markdown 报告</button>
-    <button id="btnFix" disabled class="fixbtn">🔧 生成修正后列表</button>
-    <span id="engineBadge" class="lock">⏳ 引擎加载中…</span>
-  </div>
-
-  <div id="fixPanel">
-    <div class="fixhead">
-      <b>🔧 修正后的参考文献</b>
-      <span id="fixStats"></span>
+<div id="drop" role="button" aria-label="上传论文">
+  <div class="hero-big">
+    <h1 class="t-default">把论文拖进来，即刻体检</h1>
+    <h1 class="t-over">松手，开始体检</h1>
+    <div class="sub">
+      检查参考文献是否符合 <b>GB/T 7714-2025</b>
+      <span class="dot">·</span>并可一键生成<b>修正后的列表</b>
     </div>
-    <div id="fixList"></div>
-    <div id="fixManual"></div>
-    <div class="fixcaveat">
-      ⚠️ 已重新编号的列表请同步修改正文中的引用编号；粘贴回 Word 后建议再人工过一遍。
+    <div class="sub" style="margin-top:4px">
+      文档仅在<b>浏览器本地</b>解析，不会上传到任何服务器
     </div>
-    <div id="fixActions">
-      <button class="primary" id="btnFixCopy">📋 复制修正后全部条目</button>
-      <button id="btnFixTxt">下载为 txt</button>
+    <div class="hint">支持 .docx<em>（.doc 请先用 Word 另存为 .docx）</em></div>
+    <div id="engineBadge">⏳ 引擎加载中…</div>
+    <div class="hint" style="margin-top:10px">
+      <button id="btnDemo" disabled style="border:none;padding:2px 4px;font-size:inherit">用示例论文试一试 →</button>
     </div>
   </div>
-
-  <div id="stage"></div>
-  <div id="stats">
-    <span class="stat ok" id="stPass"></span>
-    <span class="stat err" id="stErr"></span>
-    <span class="stat warn" id="stWarn"></span>
+  <div class="done-row">
+    <span class="name" id="doneName"></span>
+    <span style="flex:1"></span>
+    <span class="re">点击或拖入新文件，重新体检</span>
   </div>
-  <div id="report"></div>
+</div>
+
+<div id="actions">
+  <button id="btnCopy" disabled>复制报告</button>
+  <button id="btnMd" disabled>下载 Markdown 报告</button>
+  <button id="btnFix" disabled class="fixbtn">🔧 生成修正后列表</button>
+</div>
+
+<div id="stage"></div>
+
+<div id="stats">
+  <span class="stat ok" id="stPass"></span>
+  <span class="stat err" id="stErr"></span>
+  <span class="stat warn" id="stWarn"></span>
+</div>
+
+<div id="report"></div>
+
+<div id="fixPanel">
+  <div class="fixhead">
+    <b>修正后的参考文献</b>
+    <span id="fixStats"></span>
+  </div>
+  <div id="fixList"></div>
+  <div id="fixManual"></div>
+  <div class="fixcaveat">
+    ⚠︎ 已重新编号的列表请同步修改正文中的引用编号；粘贴回 Word 后建议再人工过一遍。
+  </div>
+  <div id="fixActions">
+    <button class="primary" id="btnFixCopy">📋 复制修正后全部条目</button>
+    <button id="btnFixTxt">下载为 txt</button>
+  </div>
 </div>
 
 <footer>
-  由 <a href="https://github.com/huashuimoyv/thesis-lint">thesis-lint</a> 提供支持 ·
-  解析引擎运行在你的浏览器（Pyodide / WebAssembly）<br>
-  反馈 / 提交学校格式要求：<a href="mailto:1416922533@qq.com">1416922533@qq.com</a>
-  （不熟悉 GitHub 发邮件即可）<br>
-  检查结果仅供参考，最终格式认定以学校要求为准 ·
-  喜欢的话去 <a href="https://github.com/huashuimoyv/thesis-lint">GitHub</a> 点个 ⭐
+  <span>由 <a href="https://github.com/huashuimoyv/thesis-lint">thesis-lint</a> 提供支持 · 引擎运行于你的浏览器（Pyodide / WebAssembly）</span>
+  <span>结果仅供参考，格式认定以学校要求为准 · <a href="mailto:1416922533@qq.com">提交学校格式要求</a></span>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v314.0.6/full/pyodide.js"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const stage = $("stage"), report = $("report");
+  const stage = $("stage"), report = $("report"), drop = $("drop");
 
   function setStage(msg, spin = true) {
     stage.innerHTML = spin ? `<span class="dot">▶</span>${msg}` : msg;
@@ -165,10 +323,9 @@
         setStage("加载 thesis-lint 校验规则…");
         await micropip.install(manifest.wheels.map(w => "./wheels/" + w));
         await py.runPythonAsync(PY_SETUP);
-        setStage("引擎就绪 ✓", false);
+        setStage("", false);
         $("engineBadge").textContent = "✅ 引擎已就绪";
-        $("engineBadge").className = "";
-        $("engineBadge").style.color = "#7ee787";
+        $("engineBadge").style.color = "var(--ok-hi)";
         $("btnDemo").disabled = false;
         return py;
       })().catch(err => { enginePromise = null; throw err; });
@@ -176,9 +333,9 @@
     return enginePromise;
   }
 
-  /* 页面打开即后台预热引擎 */
   getEngine().catch(err => {
     $("engineBadge").textContent = "⚠️ 引擎加载失败（检查网络后刷新重试）";
+    $("engineBadge").style.color = "var(--warn)";
     console.error(err);
   });
 
@@ -233,6 +390,8 @@ def web_fix(filename: str) -> str:
 
   /* ---------- 检查流程 ---------- */
   let busy = false;
+  let lastFilename = null;
+  let fixData = "";
 
   async function checkFile(file) {
     if (busy) return;
@@ -242,7 +401,7 @@ def web_fix(filename: str) -> str:
     }
     busy = true;
     lastFilename = file.name;
-    setButtons(false);
+    beginWork();
     try {
       const py = await getEngine();
       setStage(`正在检查 ${file.name} …`);
@@ -262,11 +421,11 @@ def web_fix(filename: str) -> str:
     if (busy) return;
     busy = true;
     lastFilename = "__demo__.docx";
-    setButtons(false);
+    beginWork();
     try {
       const py = await getEngine();
       setStage("正在生成并检查示例论文 …");
-      await present(py, "__demo__.docx", "web_demo");
+      await present(py, lastFilename, "web_demo");
     } catch (err) {
       setStage("❌ 检查失败：" + (err.message || err), false);
       console.error(err);
@@ -276,24 +435,34 @@ def web_fix(filename: str) -> str:
     }
   }
 
+  function beginWork() {
+    document.body.classList.remove("has-result");
+    $("fixPanel").style.display = "none";
+    drop.classList.add("busy");
+  }
+
   async function present(py, filename, fn = "web_check") {
     const jsonStr = await py.runPythonAsync(`${fn}(${JSON.stringify(filename)})`);
     const data = JSON.parse(jsonStr);
+    drop.classList.remove("busy");
+    $("doneName").textContent = "✓ " + (fn === "web_demo" ? "示例论文" : filename);
     render(data);
     setStage("", false);
   }
 
   function render(data) {
+    document.body.classList.add("has-result");
     if (!data.found) {
       report.style.display = "block";
       report.textContent = data.text;
       $("stats").style.display = "none";
       $("fixPanel").style.display = "none";
+      $("btnFix").disabled = true;
       return;
     }
-    $("stPass").textContent = `✅ ${data.stats.passed} 条通过`;
-    $("stErr").textContent = `❌ ${data.stats.errors} 个错误`;
-    $("stWarn").textContent = `⚠️ ${data.stats.warns} 个警告`;
+    $("stPass").innerHTML = `<b>${data.stats.passed}</b>条通过`;
+    $("stErr").innerHTML = `<b>${data.stats.errors}</b>个错误`;
+    $("stWarn").innerHTML = `<b>${data.stats.warns}</b>个警告`;
     $("stats").style.display = "flex";
     $("stErr").style.display = data.stats.errors ? "inline-block" : "none";
     $("stWarn").style.display = data.stats.warns ? "inline-block" : "none";
@@ -308,14 +477,11 @@ def web_fix(filename: str) -> str:
     $("btnCopy").disabled = false;
     $("btnMd").disabled = false;
     $("btnMd").dataset.md = data.markdown;
-    // 有条目才允许生成修正列表
     $("btnFix").disabled = data.stats.total === 0;
     $("fixPanel").style.display = "none";
   }
 
   /* ---------- 自动修正 ---------- */
-  let lastFilename = null;
-
   async function generateFix() {
     if (busy || !lastFilename) return;
     busy = true;
@@ -358,16 +524,18 @@ def web_fix(filename: str) -> str:
     $("fixPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  let fixData = "";
-
   function setButtons(on) {
+    drop.classList.toggle("busy", busy);
     $("btnDemo").disabled = !(on && enginePromise);
-    $("btnFix").disabled = !(on && lastFilename);
-    if (on && report.style.display !== "none") { $("btnCopy").disabled = false; $("btnMd").disabled = false; }
+    $("btnFix").disabled = !(on && lastFilename) ||
+      (report.style.display !== "none" && report.textContent.includes("未找到参考文献章节"));
+    if (on && report.style.display !== "none" && !report.textContent.includes("未找到")) {
+      $("btnCopy").disabled = false;
+      $("btnMd").disabled = false;
+    }
   }
 
   /* ---------- 事件绑定 ---------- */
-  const drop = $("drop");
   drop.addEventListener("click", () => {
     const input = document.createElement("input");
     input.type = "file"; input.accept = ".docx";
@@ -382,7 +550,6 @@ def web_fix(filename: str) -> str:
     const f = e.dataTransfer.files[0];
     if (f) checkFile(f);
   });
-  /* 整页拖入也接收 */
   document.addEventListener("dragover", e => e.preventDefault());
   document.addEventListener("drop", e => {
     e.preventDefault();
@@ -390,7 +557,7 @@ def web_fix(filename: str) -> str:
     if (f) checkFile(f);
   });
 
-  $("btnDemo").addEventListener("click", checkDemo);
+  $("btnDemo").addEventListener("click", e => { e.stopPropagation(); checkDemo(); });
   $("btnFix").addEventListener("click", generateFix);
   $("btnFixCopy").addEventListener("click", () => {
     navigator.clipboard.writeText(fixData)
@@ -413,26 +580,12 @@ def web_fix(filename: str) -> str:
       await getEngine();
       await checkDemo();
       if (params.has("autofix")) {
-        // 等 web_check 渲染完成后再触发修正
         for (let i = 0; i < 20 && busy; i++) await new Promise(r => setTimeout(r, 500));
         await generateFix();
       }
     };
     chain().catch(console.error);
   }
-  $("btnCopy").addEventListener("click", () => {
-    navigator.clipboard.writeText(report.textContent)
-      .then(() => setStage("✅ 已复制到剪贴板", false))
-      .catch(() => setStage("复制失败，请手动选择文本", false));
-  });
-  $("btnMd").addEventListener("click", () => {
-    const blob = new Blob([$("btnMd").dataset.md || ""], { type: "text/markdown" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "参考文献体检报告.md";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  });
 })();
 </script>
 </body>
