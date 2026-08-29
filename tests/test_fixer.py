@@ -6,7 +6,7 @@ from thesislint.fixer import fix_entries, fix_entry
 class TestSingleEntryFixes:
     def test_fullwidth_punctuation_fixed(self):
         r = fix_entry("[3] 张三，李四. 论文[J]. 学报，2024，47（3）：100-110.", 3)
-        assert "[3] 张三, 李四. 论文[J]. 学报, 2024, 47(3): 100-110." == r.fixed
+        assert r.fixed == "[3] 张三, 李四. 论文[J]. 学报, 2024, 47(3): 100-110."
         assert any("全角" in f for f in r.fixes)
         assert r.unresolved == []
 

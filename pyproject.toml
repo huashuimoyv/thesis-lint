@@ -24,7 +24,7 @@ classifiers = [
 dependencies = ["python-docx>=1.1", "tkinterdnd2>=0.4 ; sys_platform == 'win32'"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.8"]
 
 [project.scripts]
 thesislint = "thesislint.cli:main"
@@ -34,3 +34,24 @@ packages = ["src/thesislint"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# 门槛 54%：gui.py（376 语句、19%）是纯 UI 胶水，刻意不测而拖低总数；
+# 核心逻辑 checker/fixer/report/extractor/patterns 均 ≥96%。
+# 待 gui 抽出纯逻辑函数后逐步上调。
+addopts = "--cov=thesislint --cov-report=term-missing --cov-fail-under=54"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# BLE：代码里已有 noqa: BLE001 记录意图（优雅降级的宽捕获），选中让它真正生效
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "BLE"]
+ignore = [
+    "E501",    # 中文注释与长字符串较多，行宽交给 formatter 管
+    "RUF001",  # 本项目面向中文论文场景，字符串里的全角标点是业务本身，不是歧义字符
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]

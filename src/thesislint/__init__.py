@@ -5,15 +5,15 @@
 
 __version__ = "0.4.0"
 
-from .checker import Issue, check_entry, check_entries
+from .checker import Issue, check_entries, check_entry
 from .extractor import find_bibliography
 from .report import build_text_report
 
 __all__ = [
     "Issue",
-    "check_entry",
-    "check_entries",
-    "find_bibliography",
-    "build_text_report",
     "__version__",
+    "build_text_report",
+    "check_entries",
+    "check_entry",
+    "find_bibliography",
 ]

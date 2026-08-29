@@ -1,6 +1,5 @@
 """双模式分发与 GUI 纯逻辑的单元测试。"""
 
-import sys
 
 from thesislint import gui
 from thesislint.cli import main

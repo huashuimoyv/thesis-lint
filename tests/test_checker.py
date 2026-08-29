@@ -1,6 +1,6 @@
 """checker 规则单元测试。"""
 
-from thesislint.checker import ERROR, WARN, check_entry, check_entries
+from thesislint.checker import ERROR, WARN, check_entries, check_entry
 
 
 class TestValidEntries:

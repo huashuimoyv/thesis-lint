@@ -2,8 +2,8 @@
 
 from types import SimpleNamespace
 
-from thesislint.extractor import find_bibliography
 from thesislint.cli import analyze
+from thesislint.extractor import find_bibliography
 
 
 def fake_paragraphs(*pairs):
@@ -40,6 +40,17 @@ class TestExtractor:
         bib = find_bibliography(paras)
         assert len(bib.entries) == 1
         assert "2024" in bib.entries[0]
+
+    def test_orphan_line_becomes_missing_number_entry(self):
+        """区内开头就是无序号正文：必须成为条目交给 checker 报 E001，不得静默跳过。"""
+        paras = fake_paragraphs(
+            ("参考文献", True),
+            ("张三. 丢了序号的条目[J]. 学报, 2024, 1(1): 1-9.", False),
+            ("[2] 李四. 正常条目[J]. 学报, 2024, 2(1): 1-9.", False),
+        )
+        bib = find_bibliography(paras)
+        assert len(bib.entries) == 2
+        assert bib.entries[0].startswith("张三")
 
     def test_not_found(self):
         paras = fake_paragraphs(("只有正文", False))

@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 import threading
@@ -36,7 +37,7 @@ def _supports_tk() -> bool:
     try:
         import tkinter  # noqa: F401
         return True
-    except Exception:  # ImportError 或显示环境缺失
+    except Exception:  # ImportError 或显示环境缺失  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
         return False
 
 
@@ -57,7 +58,7 @@ def _launched_from_explorer() -> bool:
             return False
         buf = (ctypes.c_uint32 * 1)()
         return k32.GetConsoleProcessList(buf, 1) == 1
-    except Exception:
+    except Exception:  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
         return False
 
 
@@ -88,7 +89,8 @@ _DEMO_ENTRIES = [
 class App:
     def __init__(self) -> None:
         import tkinter as tk
-        from tkinter import filedialog, font as tkfont, messagebox, ttk
+        from tkinter import filedialog, messagebox, ttk
+        from tkinter import font as tkfont
 
         self._tk = tk
         self._filedialog = filedialog
@@ -131,7 +133,7 @@ class App:
 
     # ---------- 窗口与主题 ----------
 
-    def _make_root(self, tk):  # noqa: ANN001
+    def _make_root(self, tk):
         """优先 tkinterdnd2 的 Tk 获得整窗拖拽；失败退回普通 Tk。"""
         try:
             from tkinterdnd2 import DND_FILES, TkinterDnTk  # type: ignore
@@ -140,25 +142,24 @@ class App:
             root.drop_target_register(DND_FILES)
             root.dnd_bind("<<Drop>>", self._on_drop)
             return root
-        except Exception:
+        except Exception:  # noqa: BLE001  tkinterdnd2 不可用时回退纯 Tk（拖拽降级为点击）
             return tk.Tk()
 
-    def _style_ttk(self, ttk):  # noqa: ANN001
+    def _style_ttk(self, ttk):
         style = ttk.Style(self.root)
-        try:
+        # 刻意宽捕获：主题不可用就用默认主题
+        with contextlib.suppress(Exception):
             style.theme_use("clam")
-        except Exception:
-            pass
         style.configure("TScrollbar", background=RAISE, troughcolor=BG,
                         bordercolor=BG, arrowcolor=MUTED, lightcolor=RAISE,
                         darkcolor=RAISE)
         style.map("TScrollbar", background=[("active", LINE_HI)])
 
-    def _hover(self, btn, normal, hovered):  # noqa: ANN001
+    def _hover(self, btn, normal, hovered):
         btn.bind("<Enter>", lambda _e: btn.configure(bg=hovered))
         btn.bind("<Leave>", lambda _e: btn.configure(bg=normal))
 
-    def _button(self, parent, text, command, *, kind="ghost"):  # noqa: ANN001
+    def _button(self, parent, text, command, *, kind="ghost"):
         tk = self._tk
         styles = {
             "accent": (ACCENT, "#0b0e13", ACCENT_HI, "#0b0e13"),
@@ -178,7 +179,7 @@ class App:
         btn.bind("<Leave>", lambda _e: btn.configure(bg=bg))
         return btn
 
-    def _set_enabled(self, btn, enabled):  # noqa: ANN001
+    def _set_enabled(self, btn, enabled):
         btn.configure(state="normal" if enabled else "disabled")
 
     # ---------- 区块构建 ----------
@@ -247,7 +248,7 @@ class App:
             b.pack(side="left", padx=(0, 8))
             self._set_enabled(b, False)
 
-    def _make_code_view(self, parent, height):  # noqa: ANN001
+    def _make_code_view(self, parent, height):
         tk = self._tk
         frame = tk.Frame(parent, bg=LINE)
         text = tk.Text(
@@ -318,7 +319,7 @@ class App:
         if path:
             self.check(path)
 
-    def _on_drop(self, event):  # noqa: ANN001
+    def _on_drop(self, event):
         data = event.data.strip()
         if data.startswith("{") and data.endswith("}"):
             data = data[1:-1]
@@ -332,7 +333,7 @@ class App:
         import tempfile
         try:
             from docx import Document
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             self._set_status(f"无法生成示例：{exc}", ERR)
             return
         path = str(Path(tempfile.gettempdir()) / "thesislint_demo.docx")
@@ -376,11 +377,11 @@ class App:
                      "warns": report.warn_count}
             self.root.after(0, lambda: self._finish(
                 path, display_name, text, md, summary, color, found, stats))
-        except Exception as exc:  # 解析失败等
+        except Exception as exc:  # 解析失败等  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             detail = str(exc) or exc.__class__.__name__
             self.root.after(0, lambda: self._finish_error(detail))
 
-    def _finish(self, path, display_name, text, md, summary, color, found, stats):  # noqa: ANN001
+    def _finish(self, path, display_name, text, md, summary, color, found, stats):
         if self._last_path != path:
             return
         self._text_cache = text
@@ -456,7 +457,7 @@ class App:
                 fix_display += "\n\n以下条目无法全自动修正，请人工处理：\n" + "\n".join(manual_lines)
             self.root.after(0, lambda: self._finish_fix(fix_display, header, body,
                                                         len(manual_lines)))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             detail = str(exc) or exc.__class__.__name__
             self.root.after(0, lambda: self._set_status(f"生成失败：{detail}", ERR))
             self.root.after(0, lambda: self._set_enabled(self.btn_fix, True))
@@ -533,15 +534,14 @@ def run_gui() -> int:
               file=sys.stderr)
         return 2
     if os.name == "nt":
-        try:
+        # 刻意宽捕获：DPI 感知失败不影响功能
+        with contextlib.suppress(Exception):
             import ctypes
 
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
-        except Exception:
-            pass
     try:
         app = App()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
         print(f"无法打开图形界面：{exc}\n可改用命令行：thesislint 论文.docx", file=sys.stderr)
         return 2
     return app.run()

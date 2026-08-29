@@ -29,7 +29,7 @@ class Bibliography:
     line_numbers: list[int] = field(default_factory=list)
 
 
-def _is_heading(paragraph) -> bool:  # noqa: ANN001 (python-docx Paragraph)
+def _is_heading(paragraph) -> bool:
     style = getattr(getattr(paragraph, "style", None), "name", "") or ""
     return bool(_HEADING_HINT.search(style))
 
@@ -75,6 +75,11 @@ def find_bibliography(paragraphs, section_keyword: str = "参考文献") -> Bibl
         elif current is not None:
             # 不以 [n] 开头的行视为上一条目的折行，直接拼接
             current.append(raw)
+        else:
+            # 区内开头就是无序号正文：视为丢了序号的条目，交给 checker 报 E001，
+            # 而不是静默跳过（否则"缺序号"这种错误用户永远看不到）
+            current = [raw]
+            result.line_numbers.append(i + 1)
 
     if current is not None:
         result.entries.append(" ".join(current))

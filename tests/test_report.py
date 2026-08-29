@@ -31,7 +31,7 @@ def _sample_report() -> Report:
     ]
     per_entry, section_issues = check_entries(entries)
     r = Report(source="t.docx", found_section=True, section_issues=section_issues)
-    for i, (text, issues) in enumerate(zip(entries, per_entry)):
+    for i, (text, issues) in enumerate(zip(entries, per_entry, strict=True)):
         r.entries.append(
             EntryResult(index=i + 1, line=i + 1, text=text, issues=issues)
         )

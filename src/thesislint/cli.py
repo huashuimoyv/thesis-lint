@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sys
 from pathlib import Path
 
@@ -41,10 +42,9 @@ def _force_utf8_stdio() -> None:
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure:
-            try:
+            # 刻意宽捕获：任一失败都走降级路径
+            with contextlib.suppress(Exception):
                 stream.reconfigure(encoding="utf-8", errors="replace")
-            except Exception:  # noqa: BLE001
-                pass
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         report = analyze(args.docx, args.section)
-    except Exception as exc:  # 损坏的文档等
+    except Exception as exc:  # 损坏的文档等  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
         print(f"无法解析文档：{exc}", file=sys.stderr)
         return 2
 
