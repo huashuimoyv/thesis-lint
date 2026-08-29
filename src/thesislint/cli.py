@@ -28,8 +28,12 @@ def analyze(path: Path, section_keyword: str = "参考文献") -> Report:
     report = Report(source=path.name, found_section=bib.found, section_issues=section_issues)
     for i, text in enumerate(bib.entries):
         report.entries.append(
-            EntryResult(index=i + 1, line=bib.line_numbers[i] if i < len(bib.line_numbers) else 0,
-                        text=text, issues=per_entry[i])
+            EntryResult(
+                index=i + 1,
+                line=bib.line_numbers[i] if i < len(bib.line_numbers) else 0,
+                text=text,
+                issues=per_entry[i],
+            )
         )
     return report
 
@@ -78,7 +82,10 @@ def main(argv: list[str] | None = None) -> int:
     _force_utf8_stdio()
 
     if args.docx.suffix.lower() != ".docx":
-        print(f"暂只支持 .docx，收到的是 {args.docx.suffix}。请先用 Word 另存为 .docx。", file=sys.stderr)
+        print(
+            f"暂只支持 .docx，收到的是 {args.docx.suffix}。请先用 Word 另存为 .docx。",
+            file=sys.stderr,
+        )
         return 2
     if not args.docx.exists():
         print(f"文件不存在：{args.docx}", file=sys.stderr)

@@ -36,8 +36,9 @@ ERR = "#ff7b72"
 def _supports_tk() -> bool:
     try:
         import tkinter  # noqa: F401
+
         return True
-    except Exception:  # ImportError 或显示环境缺失  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
+    except Exception:  # noqa: BLE001  ImportError 或显示环境缺失
         return False
 
 
@@ -68,11 +69,7 @@ def should_launch_gui(argv: list[str]) -> bool:
         return False
     if len(argv) == 0:
         return True  # 直接双击 exe
-    if (
-        len(argv) == 1
-        and argv[0].lower().endswith(".docx")
-        and not argv[0].startswith("-")
-    ):
+    if len(argv) == 1 and argv[0].lower().endswith(".docx") and not argv[0].startswith("-"):
         return _launched_from_explorer()
     return False
 
@@ -119,7 +116,7 @@ class App:
         self._text_cache = ""
         self._fix_cache = ""
         self._last_path: str | None = None
-        self._hero_mode = "idle"   # idle / done
+        self._hero_mode = "idle"  # idle / done
         self._pulse_step = False
         self._pulse()
 
@@ -150,9 +147,15 @@ class App:
         # 刻意宽捕获：主题不可用就用默认主题
         with contextlib.suppress(Exception):
             style.theme_use("clam")
-        style.configure("TScrollbar", background=RAISE, troughcolor=BG,
-                        bordercolor=BG, arrowcolor=MUTED, lightcolor=RAISE,
-                        darkcolor=RAISE)
+        style.configure(
+            "TScrollbar",
+            background=RAISE,
+            troughcolor=BG,
+            bordercolor=BG,
+            arrowcolor=MUTED,
+            lightcolor=RAISE,
+            darkcolor=RAISE,
+        )
         style.map("TScrollbar", background=[("active", LINE_HI)])
 
     def _hover(self, btn, normal, hovered):
@@ -163,19 +166,31 @@ class App:
         tk = self._tk
         styles = {
             "accent": (ACCENT, "#0b0e13", ACCENT_HI, "#0b0e13"),
-            "ghost":  (RAISE, TEXT, LINE_HI, TEXT),
-            "warn":   (RAISE, WARN, LINE_HI, WARN),
-            "ok":     ("#1a3f2a", OK, "#215237", OK),
+            "ghost": (RAISE, TEXT, LINE_HI, TEXT),
+            "warn": (RAISE, WARN, LINE_HI, WARN),
+            "ok": ("#1a3f2a", OK, "#215237", OK),
         }
         bg, fg, hbg, hfg = styles[kind]
         btn = tk.Button(
-            parent, text=text, command=command,
-            font=(self._ui, 9), cursor="hand2",
-            relief="flat", bd=0, padx=14, pady=5,
-            bg=bg, fg=fg, activebackground=hbg, activeforeground=hfg,
-            disabledforeground=FAINT, state="normal",
+            parent,
+            text=text,
+            command=command,
+            font=(self._ui, 9),
+            cursor="hand2",
+            relief="flat",
+            bd=0,
+            padx=14,
+            pady=5,
+            bg=bg,
+            fg=fg,
+            activebackground=hbg,
+            activeforeground=hfg,
+            disabledforeground=FAINT,
+            state="normal",
         )
-        btn.bind("<Enter>", lambda _e: btn.configure(bg=hbg) if str(btn["state"]) == "normal" else None)
+        btn.bind(
+            "<Enter>", lambda _e: btn.configure(bg=hbg) if str(btn["state"]) == "normal" else None
+        )
         btn.bind("<Leave>", lambda _e: btn.configure(bg=bg))
         return btn
 
@@ -187,31 +202,51 @@ class App:
     def _build_header(self):
         tk = self._tk
         from . import __version__
+
         head = tk.Frame(self.root, bg=BG)
         head.pack(fill="x", padx=26, pady=(18, 8))
         tk.Label(head, text="thesis", font=(self._ui, 12, "bold"), bg=BG, fg=TEXT).pack(side="left")
         tk.Label(head, text="·", font=(self._ui, 12, "bold"), bg=BG, fg=ACCENT).pack(side="left")
         tk.Label(head, text="lint", font=(self._ui, 12, "bold"), bg=BG, fg=TEXT).pack(side="left")
-        tk.Label(head, text=f"  参考文献是否符合 GB/T 7714-2025 · v{__version__}",
-                 font=(self._ui, 9), bg=BG, fg=MUTED).pack(side="left", padx=(10, 0))
-        tk.Label(head, text="本地解析 · 不上传", font=(self._ui, 8), bg=BG, fg=FAINT).pack(side="right")
+        tk.Label(
+            head,
+            text=f"  参考文献是否符合 GB/T 7714-2025 · v{__version__}",
+            font=(self._ui, 9),
+            bg=BG,
+            fg=MUTED,
+        ).pack(side="left", padx=(10, 0))
+        tk.Label(head, text="本地解析 · 不上传", font=(self._ui, 8), bg=BG, fg=FAINT).pack(
+            side="right"
+        )
 
     def _build_drop_zone(self):
         tk = self._tk
         self.drop = tk.Frame(
-            self.root, bg=SURFACE,
-            highlightthickness=1, highlightbackground=LINE, highlightcolor=LINE,
+            self.root,
+            bg=SURFACE,
+            highlightthickness=1,
+            highlightbackground=LINE,
+            highlightcolor=LINE,
         )
         self.drop.pack(fill="x", padx=26, pady=(6, 4))
 
         # 海报态
         self.hero = tk.Frame(self.drop, bg=SURFACE)
         self.hero.pack(pady=34)
-        tk.Label(self.hero, text="把论文拖进来，即刻体检",
-                 font=(self._ui, 16, "bold"), bg=SURFACE, fg=TEXT).pack()
-        tk.Label(self.hero,
-                 text="拖入窗口、拖到 exe 图标、或点击选择 · 只支持 .docx（.doc 请先另存为 .docx）",
-                 font=(self._ui, 9), bg=SURFACE, fg=MUTED).pack(pady=(8, 16))
+        tk.Label(
+            self.hero,
+            text="把论文拖进来，即刻体检",
+            font=(self._ui, 16, "bold"),
+            bg=SURFACE,
+            fg=TEXT,
+        ).pack()
+        tk.Label(
+            self.hero,
+            text="拖入窗口、拖到 exe 图标、或点击选择 · 只支持 .docx（.doc 请先另存为 .docx）",
+            font=(self._ui, 9),
+            bg=SURFACE,
+            fg=MUTED,
+        ).pack(pady=(8, 16))
         row = tk.Frame(self.hero, bg=SURFACE)
         row.pack()
         self.btn_pick = self._button(row, "选择文件", self.pick_file, kind="accent")
@@ -221,11 +256,15 @@ class App:
 
         # 完成态（收拢成细条）
         self.done = tk.Frame(self.drop, bg=SURFACE)
-        self.done_name = tk.Label(self.done, text="", font=(self._mono, 10),
-                                  bg=SURFACE, fg=OK)
+        self.done_name = tk.Label(self.done, text="", font=(self._mono, 10), bg=SURFACE, fg=OK)
         self.done_name.pack(side="left")
-        tk.Label(self.done, text="  点击或拖入新文件，重新体检",
-                 font=(self._ui, 9), bg=SURFACE, fg=ACCENT).pack(side="left")
+        tk.Label(
+            self.done,
+            text="  点击或拖入新文件，重新体检",
+            font=(self._ui, 9),
+            bg=SURFACE,
+            fg=ACCENT,
+        ).pack(side="left")
 
         for w in (self.drop, self.hero, self.done):
             w.bind("<Button-1>", lambda _e: self.pick_file())
@@ -234,8 +273,9 @@ class App:
 
     def _build_status(self):
         tk = self._tk
-        self.status = tk.Label(self.root, text="等待文件…", font=(self._ui, 9),
-                               bg=BG, fg=MUTED, anchor="w")
+        self.status = tk.Label(
+            self.root, text="等待文件…", font=(self._ui, 9), bg=BG, fg=MUTED, anchor="w"
+        )
         self.status.pack(fill="x", padx=28, pady=(6, 2))
 
     def _build_toolbar(self):
@@ -252,14 +292,26 @@ class App:
         tk = self._tk
         frame = tk.Frame(parent, bg=LINE)
         text = tk.Text(
-            frame, height=height, wrap="word",
-            bg=SURFACE, fg=TEXT, insertbackground=TEXT,
-            selectbackground="#2d4a73", selectforeground=TEXT,
-            relief="flat", bd=0, highlightthickness=1, highlightbackground=LINE,
-            font=(self._mono, 10), padx=16, pady=12, state="disabled",
+            frame,
+            height=height,
+            wrap="word",
+            bg=SURFACE,
+            fg=TEXT,
+            insertbackground=TEXT,
+            selectbackground="#2d4a73",
+            selectforeground=TEXT,
+            relief="flat",
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=LINE,
+            font=(self._mono, 10),
+            padx=16,
+            pady=12,
+            state="disabled",
         )
         text.pack(side="left", fill="both", expand=True)
         from tkinter import ttk
+
         sb = ttk.Scrollbar(frame, orient="vertical", command=text.yview)
         sb.pack(side="right", fill="y")
         text.configure(yscrollcommand=sb.set)
@@ -279,10 +331,10 @@ class App:
         self.fix_panel = tk.Frame(self.root, bg=BG)
         head = tk.Frame(self.fix_panel, bg=BG)
         head.pack(fill="x", pady=(10, 6))
-        tk.Label(head, text="修正后的参考文献", font=(self._ui, 11, "bold"),
-                 bg=BG, fg=OK).pack(side="left")
-        self.fix_stats = tk.Label(head, text="", font=(self._ui, 9),
-                                  bg=BG, fg=MUTED)
+        tk.Label(head, text="修正后的参考文献", font=(self._ui, 11, "bold"), bg=BG, fg=OK).pack(
+            side="left"
+        )
+        self.fix_stats = tk.Label(head, text="", font=(self._ui, 9), bg=BG, fg=MUTED)
         self.fix_stats.pack(side="left", padx=(12, 0))
 
         frame, text = self._make_code_view(self.fix_panel, 9)
@@ -291,8 +343,13 @@ class App:
 
         row = tk.Frame(self.fix_panel, bg=BG)
         row.pack(fill="x", pady=(8, 0))
-        tk.Label(row, text="⚠︎ 重新编号后请同步修改正文引用编号；粘贴回 Word 后建议再人工过一遍",
-                 font=(self._ui, 8), bg=BG, fg=FAINT).pack(side="left")
+        tk.Label(
+            row,
+            text="⚠︎ 重新编号后请同步修改正文引用编号；粘贴回 Word 后建议再人工过一遍",
+            font=(self._ui, 8),
+            bg=BG,
+            fg=FAINT,
+        ).pack(side="left")
         self.btn_fix_copy = self._button(row, "复制修正后条目", self.copy_fix, kind="ok")
         self.btn_fix_copy.pack(side="right")
         self.btn_fix_txt = self._button(row, "导出 txt", self.export_fix_txt, kind="ghost")
@@ -327,13 +384,15 @@ class App:
             self.check(data)
         else:
             self._messagebox.showwarning(
-                "不支持的文件", "目前只支持 .docx 文件。\n如果是 .doc，请先用 Word 另存为 .docx。")
+                "不支持的文件", "目前只支持 .docx 文件。\n如果是 .doc，请先用 Word 另存为 .docx。"
+            )
 
     def check_demo(self):
         import tempfile
+
         try:
             from docx import Document
-        except Exception as exc:  # pragma: no cover  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
+        except Exception as exc:  # pragma: no cover  # noqa: BLE001
             self._set_status(f"无法生成示例：{exc}", ERR)
             return
         path = str(Path(tempfile.gettempdir()) / "thesislint_demo.docx")
@@ -373,10 +432,14 @@ class App:
             summary = f"完成：{report.error_count} 个错误，{report.warn_count} 个警告"
             color = ERR if report.error_count else (WARN if report.warn_count else OK)
             found = report.found_section
-            stats = {"total": len(report.entries), "errors": report.error_count,
-                     "warns": report.warn_count}
-            self.root.after(0, lambda: self._finish(
-                path, display_name, text, md, summary, color, found, stats))
+            stats = {
+                "total": len(report.entries),
+                "errors": report.error_count,
+                "warns": report.warn_count,
+            }
+            self.root.after(
+                0, lambda: self._finish(path, display_name, text, md, summary, color, found, stats)
+            )
         except Exception as exc:  # 解析失败等  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             detail = str(exc) or exc.__class__.__name__
             self.root.after(0, lambda: self._finish_error(detail))
@@ -443,20 +506,25 @@ class App:
             result = fix_entries([e.text for e in report.entries])
             lines = result["lines"]
             s = result["summary"]
-            header = (f"共 {s['total']} 条 · 自动修正 {s['auto_fixed']} 条 · "
-                      f"{s['manual_needed']} 条需人工处理"
-                      + (" · 已重新编号" if s["renumbered"] else ""))
+            header = (
+                f"共 {s['total']} 条 · 自动修正 {s['auto_fixed']} 条 · "
+                f"{s['manual_needed']} 条需人工处理" + (" · 已重新编号" if s["renumbered"] else "")
+            )
             manual_lines = []
             for e in result["results"]:
                 if e.unresolved:
                     manual_lines.append(
-                        f"· 第 {e.index} 条（{e.original[:40]}…）：{'；'.join(e.unresolved)}")
+                        f"· 第 {e.index} 条（{e.original[:40]}…）：{'；'.join(e.unresolved)}"
+                    )
             body = "\n".join(lines)
             fix_display = header + "\n\n" + body
             if manual_lines:
-                fix_display += "\n\n以下条目无法全自动修正，请人工处理：\n" + "\n".join(manual_lines)
-            self.root.after(0, lambda: self._finish_fix(fix_display, header, body,
-                                                        len(manual_lines)))
+                fix_display += "\n\n以下条目无法全自动修正，请人工处理：\n" + "\n".join(
+                    manual_lines
+                )
+            self.root.after(
+                0, lambda: self._finish_fix(fix_display, header, body, len(manual_lines))
+            )
         except Exception as exc:  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             detail = str(exc) or exc.__class__.__name__
             self.root.after(0, lambda: self._set_status(f"生成失败：{detail}", ERR))
@@ -502,8 +570,10 @@ class App:
         if not self._md_cache:
             return
         target = self._filedialog.asksaveasfilename(
-            title="导出体检报告", defaultextension=".md",
-            initialfile="参考文献体检报告.md", filetypes=[("Markdown", "*.md")],
+            title="导出体检报告",
+            defaultextension=".md",
+            initialfile="参考文献体检报告.md",
+            filetypes=[("Markdown", "*.md")],
         )
         if not target:
             return
@@ -514,8 +584,10 @@ class App:
         if not self._fix_cache:
             return
         target = self._filedialog.asksaveasfilename(
-            title="导出修正后列表", defaultextension=".txt",
-            initialfile="参考文献_修正后.txt", filetypes=[("文本文件", "*.txt")],
+            title="导出修正后列表",
+            defaultextension=".txt",
+            initialfile="参考文献_修正后.txt",
+            filetypes=[("文本文件", "*.txt")],
         )
         if not target:
             return
@@ -530,8 +602,10 @@ class App:
 def run_gui() -> int:
     """入口：返回进程退出码。"""
     if not _supports_tk():
-        print("当前环境缺少图形界面支持（tkinter），请改用命令行方式：thesislint 论文.docx",
-              file=sys.stderr)
+        print(
+            "当前环境缺少图形界面支持（tkinter），请改用命令行方式：thesislint 论文.docx",
+            file=sys.stderr,
+        )
         return 2
     if os.name == "nt":
         # 刻意宽捕获：DPI 感知失败不影响功能

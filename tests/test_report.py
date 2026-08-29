@@ -26,15 +26,13 @@ def _sample_report() -> Report:
     """构造一个同时含条目级与章节级问题的报告。"""
     entries = [
         "[1] 张三. 文一[J]. 学报, 2024, 1(1): 1-9.",
-        "[1] 李四. 文二[J]. 学报, 2024, 2(1): 1-9.",   # 序号重复 -> S002
-        "[5] 王五. 文三[J]. 学报, 2024, 3(1): 1-9.",   # 序号跳号 -> S001
+        "[1] 李四. 文二[J]. 学报, 2024, 2(1): 1-9.",  # 序号重复 -> S002
+        "[5] 王五. 文三[J]. 学报, 2024, 3(1): 1-9.",  # 序号跳号 -> S001
     ]
     per_entry, section_issues = check_entries(entries)
     r = Report(source="t.docx", found_section=True, section_issues=section_issues)
     for i, (text, issues) in enumerate(zip(entries, per_entry, strict=True)):
-        r.entries.append(
-            EntryResult(index=i + 1, line=i + 1, text=text, issues=issues)
-        )
+        r.entries.append(EntryResult(index=i + 1, line=i + 1, text=text, issues=issues))
     return r
 
 

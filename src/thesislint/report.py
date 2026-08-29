@@ -8,10 +8,10 @@ from dataclasses import asdict, dataclass, field
 
 @dataclass
 class EntryResult:
-    index: int          # 第几条（1 起始）
-    line: int           # 文档中的行号
+    index: int  # 第几条（1 起始）
+    line: int  # 文档中的行号
     text: str
-    issues: list        # list[checker.Issue]
+    issues: list  # list[checker.Issue]
 
     @property
     def errors(self) -> int:
@@ -54,7 +54,9 @@ def build_text_report(report: Report) -> str:
     for entry in report.entries:
         if not entry.issues:
             continue
-        lines.append(f"[{entry.index}]（第 {entry.line} 行）{entry.text[:60]}{'…' if len(entry.text) > 60 else ''}")
+        lines.append(
+            f"[{entry.index}]（第 {entry.line} 行）{entry.text[:60]}{'…' if len(entry.text) > 60 else ''}"
+        )
         for issue in entry.issues:
             mark = "[ERROR]" if issue.level == "ERROR" else "[WARN ]"
             lines.append(f"    {mark} {issue.code}: {issue.message}")
@@ -65,7 +67,9 @@ def build_text_report(report: Report) -> str:
         lines.append(f"{mark} {issue.code}: {issue.message}")
 
     n_pass = len(report.entries) - sum(1 for e in report.entries if e.issues)
-    lines.append(f"体检结果：{n_pass} 条通过，{report.error_count} 个错误，{report.warn_count} 个警告")
+    lines.append(
+        f"体检结果：{n_pass} 条通过，{report.error_count} 个错误，{report.warn_count} 个警告"
+    )
     return "\n".join(lines)
 
 
@@ -74,7 +78,9 @@ def build_markdown_report(report: Report) -> str:
     for entry in report.entries:
         text = entry.text[:40].replace("|", "\\|")
         for issue in entry.issues:
-            rows.append(f"| [{entry.index}] {text} | {entry.line} | {issue.level} | {issue.code} {issue.message} |")
+            rows.append(
+                f"| [{entry.index}] {text} | {entry.line} | {issue.level} | {issue.code} {issue.message} |"
+            )
     # 章节级问题以独立行呈现，与 text / json 保持一致
     for issue in report.section_issues:
         rows.append(f"| **章节级** | — | {issue.level} | {issue.code} {issue.message} |")

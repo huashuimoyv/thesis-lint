@@ -36,35 +36,50 @@ def _make_docx(path, entries: list[str], heading: str = "参考文献"):
 
 class TestExitCodes:
     def test_clean_doc_returns_zero(self, tmp_path):
-        path = _make_docx(tmp_path / "clean.docx", [
-            "[1] 张三. 文一[J]. 学报, 2024, 1(1): 1-9.",
-            "[2] 李四. 文二[M]. 北京: 出版社, 2020: 1-9.",
-        ])
+        path = _make_docx(
+            tmp_path / "clean.docx",
+            [
+                "[1] 张三. 文一[J]. 学报, 2024, 1(1): 1-9.",
+                "[2] 李四. 文二[M]. 北京: 出版社, 2020: 1-9.",
+            ],
+        )
         assert main([str(path)]) == 0
 
     def test_error_returns_one(self, tmp_path):
-        path = _make_docx(tmp_path / "err.docx", [
-            "张三. 无序号无类型的条目. 学报, 2024.",   # E001 + E002
-        ])
+        path = _make_docx(
+            tmp_path / "err.docx",
+            [
+                "张三. 无序号无类型的条目. 学报, 2024.",  # E001 + E002
+            ],
+        )
         assert main([str(path)]) == 1
 
     def test_warning_returns_zero_without_strict(self, tmp_path):
-        path = _make_docx(tmp_path / "warn.docx", [
-            "[1] 张三，李四. 论文名称[J]. 学报，2024，1(1): 1-9.",  # W005 全角
-        ])
+        path = _make_docx(
+            tmp_path / "warn.docx",
+            [
+                "[1] 张三，李四. 论文名称[J]. 学报，2024，1(1): 1-9.",  # W005 全角
+            ],
+        )
         assert main([str(path)]) == 0
 
     def test_warning_returns_one_with_strict(self, tmp_path):
-        path = _make_docx(tmp_path / "warn.docx", [
-            "[1] 张三，李四. 论文名称[J]. 学报，2024，1(1): 1-9.",  # W005 全角
-        ])
+        path = _make_docx(
+            tmp_path / "warn.docx",
+            [
+                "[1] 张三，李四. 论文名称[J]. 学报，2024，1(1): 1-9.",  # W005 全角
+            ],
+        )
         assert main([str(path), "--strict"]) == 1
 
     def test_duplicate_number_returns_one(self, tmp_path):
-        path = _make_docx(tmp_path / "dup.docx", [
-            "[1] 张三. 文一[J]. 学报, 2024, 1(1): 1-9.",
-            "[1] 李四. 文二[J]. 学报, 2024, 2(1): 1-9.",   # S002
-        ])
+        path = _make_docx(
+            tmp_path / "dup.docx",
+            [
+                "[1] 张三. 文一[J]. 学报, 2024, 1(1): 1-9.",
+                "[1] 李四. 文二[J]. 学报, 2024, 2(1): 1-9.",  # S002
+            ],
+        )
         assert main([str(path)]) == 1
 
 

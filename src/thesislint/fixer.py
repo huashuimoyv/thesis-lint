@@ -27,12 +27,12 @@ _AUTHOR_SPLIT_RE = re.compile(r"\s*,\s*")
 
 @dataclass
 class EntryFix:
-    index: int                 # 修正后列表中的序号（1 起始）
+    index: int  # 修正后列表中的序号（1 起始）
     original: str
     fixed: str
-    fixes: list[str] = field(default_factory=list)      # 已自动应用的修正说明
+    fixes: list[str] = field(default_factory=list)  # 已自动应用的修正说明
     unresolved: list[str] = field(default_factory=list)  # 需人工处理的原因
-    remaining_warnings: int = 0                         # 修正后仍剩余的警告数
+    remaining_warnings: int = 0  # 修正后仍剩余的警告数
 
 
 def _author_zone_bounds(text: str) -> tuple[int, int] | None:
@@ -80,7 +80,7 @@ def fix_entry(text: str, new_index: int) -> EntryFix:
     # 4. 作者区修整：仅当类型标识存在时才可靠
     bounds = _author_zone_bounds(work)
     if bounds:
-        zone = work[bounds[0]:bounds[1]]
+        zone = work[bounds[0] : bounds[1]]
         has_et_al = ("等" in zone) or ("et al" in zone.lower())
         if not has_et_al:
             core = zone.rstrip()
@@ -91,7 +91,7 @@ def fix_entry(text: str, new_index: int) -> EntryFix:
             # 每段都短（像作者名）才动手，防止误伤含长标题的解析结果
             if len(parts) >= 4 and all(len(p) <= 40 for p in parts):
                 new_zone = ", ".join(parts[:3]) + ", 等" + ("." if ended else "")
-                work = work[:bounds[0]] + new_zone + work[bounds[1]:]
+                work = work[: bounds[0]] + new_zone + work[bounds[1] :]
                 fixes.append("作者超过 3 人，截断为前 3 名并加 “, 等”")
 
     # 5. 检查无法自动解决的问题（与 checker 的 ERROR 对应）

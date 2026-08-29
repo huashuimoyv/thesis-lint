@@ -24,8 +24,22 @@ WARN = "WARN"
 
 # 常用文献类型标识。带载体/OL 的组合形如 [J/OL]，单独放行。
 _SINGLE_TAGS = {
-    "J", "M", "C", "G", "N", "D", "R", "S", "P",
-    "A", "DB", "DS", "CP", "MH", "CM", "EB",
+    "J",
+    "M",
+    "C",
+    "G",
+    "N",
+    "D",
+    "R",
+    "S",
+    "P",
+    "A",
+    "DB",
+    "DS",
+    "CP",
+    "MH",
+    "CM",
+    "EB",
 }
 
 
@@ -58,9 +72,7 @@ def check_entry(raw: str) -> list[Issue]:
     tag = None
     tag_m = TAG_RE.search(body)
     if not tag_m:
-        issues.append(
-            Issue(ERROR, "E002", "缺少文献类型标识，如 [J]、[M]、[D]、[C]、[EB/OL]")
-        )
+        issues.append(Issue(ERROR, "E002", "缺少文献类型标识，如 [J]、[M]、[D]、[C]、[EB/OL]"))
     else:
         tag = tag_m.group(1)
         base = tag.split("/")[0]
@@ -72,20 +84,14 @@ def check_entry(raw: str) -> list[Issue]:
         if not URL_RE.search(body):
             issues.append(Issue(ERROR, "E003", "电子资源（/OL）缺少获取路径（网址）"))
         if not CITE_DATE_RE.search(body):
-            issues.append(
-                Issue(WARN, "W002", "电子资源建议标注引用日期，如 [2025-01-01]")
-            )
+            issues.append(Issue(WARN, "W002", "电子资源建议标注引用日期，如 [2025-01-01]"))
 
     if not YEAR_RE.search(body):
         issues.append(Issue(ERROR, "E004", "缺少出版年份（4 位数字）"))
 
     zone = _author_zone(body, tag_m.start() if tag_m else -1)
     # “等”与西文惯用的“et al.”均视为已正确缩略作者列表
-    has_et_al = (
-        ", 等" in zone
-        or "，等" in zone
-        or "et al" in zone.lower()
-    )
+    has_et_al = ", 等" in zone or "，等" in zone or "et al" in zone.lower()
     if not has_et_al and zone.count(",") + zone.count("，") >= 3:
         issues.append(
             Issue(
@@ -95,14 +101,10 @@ def check_entry(raw: str) -> list[Issue]:
             )
         )
     if re.search(r"\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b", zone):
-        issues.append(
-            Issue(WARN, "W004", '西文作者应 “姓全大写 + 名首字母缩写”，如 “SMITH J A”')
-        )
+        issues.append(Issue(WARN, "W004", "西文作者应 “姓全大写 + 名首字母缩写”，如 “SMITH J A”"))
 
     if FULLWIDTH_PUNCT.search(body):
-        issues.append(
-            Issue(WARN, "W005", "条目内使用了全角标点（，。；：），国标要求半角")
-        )
+        issues.append(Issue(WARN, "W005", "条目内使用了全角标点（，。；：），国标要求半角"))
 
     if not text.endswith("."):
         issues.append(Issue(WARN, "W006", "条目未以句点“.”结尾"))
@@ -129,9 +131,7 @@ def check_entries(entries: list[str]) -> tuple[list[list[Issue]], list[Issue]]:
         if n == -1:
             continue
         if n in seen:
-            section_issues.append(
-                Issue(ERROR, "S002", f"第 {pos} 条与前面的条目序号重复（{n}）")
-            )
+            section_issues.append(Issue(ERROR, "S002", f"第 {pos} 条与前面的条目序号重复（{n}）"))
         seen.add(n)
 
     for pos in range(1, len(numbers)):

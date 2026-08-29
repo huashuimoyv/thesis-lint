@@ -61,7 +61,7 @@ class TestSectionFixes:
         entries = [
             "[1] 张三. 文一[J]. 学报, 2024, 1(1): 1-9.",
             "[4] 李四. 文二[J]. 学报, 2024, 2(1): 1-9.",
-            "王五. 文三[M]. 北京: 出版社, 2020: 1-9.",   # 缺序号
+            "王五. 文三[M]. 北京: 出版社, 2020: 1-9.",  # 缺序号
         ]
         result = fix_entries(entries)
         lines = result["lines"]
@@ -73,7 +73,7 @@ class TestSectionFixes:
     def test_summary_counts(self):
         entries = [
             "[1] 张三，李四. 文一[J]. 学报, 2024, 1(1): 1-9.",  # 可自动修
-            "[2] 李四. 文二. 学报, 2024, 1(1): 1-9.",           # 缺类型标识 → 人工
+            "[2] 李四. 文二. 学报, 2024, 1(1): 1-9.",  # 缺类型标识 → 人工
         ]
         result = fix_entries(entries)
         assert result["summary"]["auto_fixed"] >= 1
