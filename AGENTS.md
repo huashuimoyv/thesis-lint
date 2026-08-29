@@ -33,7 +33,7 @@ src/thesislint/
                 #   不确定的进 unresolved 让人工处理；修正后重跑 checker 统计剩余警告
   report.py     # Report/EntryResult 数据类 + text/markdown/json 三种报告
   cli.py        # argparse 入口；--section/--format/--strict；退出码 0过/1错/2用法
-tests/          # 22 个测试全绿（checker 规则单测 + 用 python-docx 现场造 docx 的端到端测试）
+tests/          # 以 pytest -q 输出为准（报告格式对等 / CLI 退出码契约 / checker 规则 / 端到端）
 build/portable_entry.py          # PyInstaller 构建入口
 build/使用说明.txt               # 便携版压缩包内附的说明
 .github/workflows/ci.yml        # pytest 矩阵 (3.10/3.12/3.14)

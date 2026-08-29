@@ -1,4 +1,4 @@
-"""体检报告构建：纯文本与 Markdown 两种格式。"""
+"""体检报告构建：text / markdown / json 三种格式。"""
 
 from __future__ import annotations
 
