@@ -72,6 +72,11 @@ class TestWarnings:
         codes = [i.code for i in check_entry(entry)]
         assert "W006" in codes
 
+    def test_online_without_cite_date(self):
+        entry = "[1] 某某机构. 报告[R/OL]. (2024-01-01). https://example.com/r.pdf."
+        codes = [i.code for i in check_entry(entry)]
+        assert "W002" in codes
+
     def test_unknown_tag(self):
         entry = "[1] 张三. 论文名称[X]. 学报, 2024, 1(1): 1-9."
         codes = [i.code for i in check_entry(entry)]

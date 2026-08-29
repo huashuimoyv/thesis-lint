@@ -12,14 +12,15 @@ import re
 from dataclasses import dataclass, field
 
 from .checker import check_entry
+from .patterns import (
+    CITE_DATE_RE,
+    FULLWIDTH_TRANS,
+    NUM_RE,
+    TAG_RE,
+    URL_RE,
+    YEAR_RE,
+)
 
-_FULLWIDTH_TRANS = str.maketrans({
-    "，": ", ", "。": ".", "；": "; ", "：": ": ",
-    "（": "(", "）": ")", "？": "?", "！": "!",
-})
-
-_TAG_RE = re.compile(r"\[([A-Z]{1,2}(?:/[A-Z]{1,2})?)\]")
-_NUM_RE = re.compile(r"^\[(\d+)\]\s*(.*)$")
 # 用于截断作者：至少要有 [类型标识] 才能可靠界定作者区
 _AUTHOR_SPLIT_RE = re.compile(r"\s*,\s*")
 
@@ -36,10 +37,10 @@ class EntryFix:
 
 def _author_zone_bounds(text: str) -> tuple[int, int] | None:
     """作者区 = 条目主体（去掉序号）开头到 [类型标识] 之前。"""
-    m = _TAG_RE.search(text)
+    m = TAG_RE.search(text)
     if not m:
         return None
-    num = _NUM_RE.match(text)
+    num = NUM_RE.match(text)
     # start(2) = 序号前缀 "[n] " 之后的主体起点
     body_start = num.start(2) if num else 0
     if m.start() <= body_start:
@@ -54,7 +55,7 @@ def fix_entry(text: str, new_index: int) -> EntryFix:
     unresolved: list[str] = []
 
     # 1. 序号：缺号或错号都按新序号重排
-    num_m = _NUM_RE.match(work)
+    num_m = NUM_RE.match(work)
     if not num_m:
         work = f"[{new_index}] {work}"
         fixes.append("补齐条目序号")
@@ -65,7 +66,7 @@ def fix_entry(text: str, new_index: int) -> EntryFix:
             fixes.append("重新编号")
 
     # 2. 全角标点 → 半角
-    translated = work.translate(_FULLWIDTH_TRANS)
+    translated = work.translate(FULLWIDTH_TRANS)
     if translated != work:
         work = translated
         fixes.append("全角标点改为半角")
@@ -94,14 +95,14 @@ def fix_entry(text: str, new_index: int) -> EntryFix:
                 fixes.append("作者超过 3 人，截断为前 3 名并加 “, 等”")
 
     # 5. 检查无法自动解决的问题（与 checker 的 ERROR 对应）
-    if not _TAG_RE.search(work):
+    if not TAG_RE.search(work):
         unresolved.append("缺少文献类型标识（[J]/[M]/[D]/[C]/[EB/OL]…），无法自动判断文献类型")
-    if not re.search(r"(?:\d{4}|\(\d{4}-\d{2}-\d{2}\))", work):
+    if not YEAR_RE.search(work):
         unresolved.append("缺少出版年份，请自行补充")
     if "/OL" in work:
-        if not re.search(r"https?://", work):
+        if not URL_RE.search(work):
             unresolved.append("电子资源缺少获取路径（网址）")
-        if not re.search(r"\[\d{4}-\d{2}-\d{2}\]", work):
+        if not CITE_DATE_RE.search(work):
             unresolved.append("电子资源建议补充引用日期 [YYYY-MM-DD]")
 
     # 6. 修正后剩余的警告（如西文姓名未缩写等），如实提示

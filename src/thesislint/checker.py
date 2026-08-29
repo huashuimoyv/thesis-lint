@@ -10,6 +10,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .patterns import (
+    CITE_DATE_RE,
+    FULLWIDTH_PUNCT,
+    NUM_RE,
+    TAG_RE,
+    URL_RE,
+    YEAR_RE,
+)
+
 ERROR = "ERROR"
 WARN = "WARN"
 
@@ -18,12 +27,6 @@ _SINGLE_TAGS = {
     "J", "M", "C", "G", "N", "D", "R", "S", "P",
     "A", "DB", "DS", "CP", "MH", "CM", "EB",
 }
-_TAG_RE = re.compile(r"\[([A-Z]{1,2}(?:/[A-Z]{1,2})?)\]")
-_NUM_RE = re.compile(r"^\[(\d+)\]\s*(.*)$")
-_YEAR_RE = re.compile(r"(?:\d{4}|\(\d{4}-\d{2}-\d{2}\))")
-_URL_RE = re.compile(r"https?://")
-_CITE_DATE_RE = re.compile(r"\[\d{4}-\d{2}-\d{2}\]")
-_FULLWIDTH_PUNCT = re.compile(r"[，。；：？！]")
 
 
 @dataclass
@@ -46,14 +49,14 @@ def check_entry(raw: str) -> list[Issue]:
     issues: list[Issue] = []
     text = raw.strip()
 
-    m = _NUM_RE.match(text)
+    m = NUM_RE.match(text)
     if not m:
         issues.append(Issue(ERROR, "E001", "条目应以序号开头，如 “ [1] ”"))
         return issues
     body = m.group(2).strip()
 
     tag = None
-    tag_m = _TAG_RE.search(body)
+    tag_m = TAG_RE.search(body)
     if not tag_m:
         issues.append(
             Issue(ERROR, "E002", "缺少文献类型标识，如 [J]、[M]、[D]、[C]、[EB/OL]")
@@ -66,14 +69,14 @@ def check_entry(raw: str) -> list[Issue]:
 
     is_online = bool(tag) and "/OL" in tag
     if is_online:
-        if not _URL_RE.search(body):
+        if not URL_RE.search(body):
             issues.append(Issue(ERROR, "E003", "电子资源（/OL）缺少获取路径（网址）"))
-        if not _CITE_DATE_RE.search(body):
+        if not CITE_DATE_RE.search(body):
             issues.append(
                 Issue(WARN, "W002", "电子资源建议标注引用日期，如 [2025-01-01]")
             )
 
-    if not _YEAR_RE.search(body):
+    if not YEAR_RE.search(body):
         issues.append(Issue(ERROR, "E004", "缺少出版年份（4 位数字）"))
 
     zone = _author_zone(body, tag_m.start() if tag_m else -1)
@@ -96,7 +99,7 @@ def check_entry(raw: str) -> list[Issue]:
             Issue(WARN, "W004", '西文作者应 “姓全大写 + 名首字母缩写”，如 “SMITH J A”')
         )
 
-    if _FULLWIDTH_PUNCT.search(body):
+    if FULLWIDTH_PUNCT.search(body):
         issues.append(
             Issue(WARN, "W005", "条目内使用了全角标点（，。；：），国标要求半角")
         )
@@ -118,7 +121,7 @@ def check_entries(entries: list[str]) -> tuple[list[list[Issue]], list[Issue]]:
 
     numbers: list[int] = []
     for raw in entries:
-        m = _NUM_RE.match(raw.strip())
+        m = NUM_RE.match(raw.strip())
         numbers.append(int(m.group(1)) if m else -1)
 
     seen: set[int] = set()
