@@ -75,6 +75,9 @@ def build_markdown_report(report: Report) -> str:
         text = entry.text[:40].replace("|", "\\|")
         for issue in entry.issues:
             rows.append(f"| [{entry.index}] {text} | {entry.line} | {issue.level} | {issue.code} {issue.message} |")
+    # 章节级问题以独立行呈现，与 text / json 保持一致
+    for issue in report.section_issues:
+        rows.append(f"| **章节级** | — | {issue.level} | {issue.code} {issue.message} |")
     head = (
         f"# 参考文献体检报告：{report.source}\n\n"
         f"- 条目总数：{len(report.entries)}\n"
@@ -97,5 +100,7 @@ def build_json_report(report: Report) -> str:
             }
             for e in report.entries
         ],
+        # 章节级问题必须可寻址，否则 error_count 无法与明细对账
+        "section_issues": [asdict(i) for i in report.section_issues],
     }
     return json.dumps(data, ensure_ascii=False, indent=2)
