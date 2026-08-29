@@ -9,7 +9,7 @@
 
 - 本地路径：`C:\Users\Ameath\.zcode\workspace\default\thesis-lint`
 - 远端：`github.com/huashuimoyv/thesis-lint`（公开仓库，MIT）
-- 当前版本：v0.4.0（v0.2.0 图形界面；v0.3.0 自动修正+网页版；v0.4.0 GUI 深色重制+修正列表对齐网页）
+- 当前版本：v0.5.0（v0.4.x GUI/网页打磨；v0.5.0 按审计手册完成工程整改：报告 section_issues 补齐、patterns.py 统一正则、ruff+覆盖率门禁、extractor 盲区修复）
 - 在线版：https://huashuimoyv.github.io/thesis-lint/ （Pyodide 跑同一套 Python 规则，纯前端不上传；
   测试钩子 URL 参数 ?autodemo=1&autofix=1 自动跑示例并生成修正列表）
 
@@ -26,6 +26,7 @@ src/thesislint/
                 #   示例体检）、THESISLINT_GUI_AUTOFIX=1（体检后自动生成修正列表）。
                 #   拖拽依赖 tkinterdnd2（仅 win32 marker），失败自动降级为纯按钮模式。
   extractor.py  # 定位"参考文献"章节，逐条提取（自动合并 Word 折行条目），保留 [n] 序号原文
+  patterns.py   # 正则与全角字符映射的唯一事实来源（checker/fixer 共用，v0.5.0）
   checker.py    # 11 条规则引擎，ERROR/WARN 两级：缺序号/类型标识/年份/网址、序号重复跳号(段落级)、
                 #   作者>3人未加",等"(认可 et al.)、西文姓名未缩写、全角标点、缺尾句点、/OL缺引用日期
   fixer.py      # 自动修正引擎（v0.3.0）：只做确定性变换（全角→半角、补尾句点、补序号/重编号、
