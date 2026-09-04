@@ -9,7 +9,7 @@
 
 - 本地路径：`C:\Users\Ameath\.zcode\workspace\default\thesis-lint`
 - 远端：`github.com/huashuimoyv/thesis-lint`（公开仓库，MIT）
-- 当前版本：v0.5.0（v0.4.x GUI/网页打磨；v0.5.0 按审计手册完成工程整改：报告 section_issues 补齐、patterns.py 统一正则、ruff+覆盖率门禁、extractor 盲区修复）
+- 当前版本：v0.6.0（改进 Word 参考文献提取与自动修正安全性；桌面版新增完整交互流程、深浅主题和后台任务隔离）
 - 在线版：https://huashuimoyv.github.io/thesis-lint/ （Pyodide 跑同一套 Python 规则，纯前端不上传；
   测试钩子 URL 参数 ?autodemo=1&autofix=1 自动跑示例并生成修正列表）
 
