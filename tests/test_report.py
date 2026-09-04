@@ -87,6 +87,7 @@ class TestEdgeCases:
     def test_not_found_section(self):
         r = Report(source="x.docx", found_section=False)
         assert "未找到参考文献章节" in build_text_report(r)
+        assert "未找到参考文献章节" in build_markdown_report(r)
         assert '"found_section": false' in build_json_report(r)
 
     def test_empty_report(self):

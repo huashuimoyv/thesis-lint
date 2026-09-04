@@ -4,6 +4,180 @@ from thesislint import gui
 from thesislint.cli import main
 
 
+class _FakeWidget:
+    def __init__(self, mapped=False, children=None, **config):
+        self.mapped = mapped
+        self.children = children or []
+        self.config = config
+        self.calls = []
+        self.tags = {}
+
+    def configure(self, **kwargs):
+        self.config.update(kwargs)
+
+    def pack(self, **kwargs):
+        self.mapped = True
+        self.calls.append(("pack", kwargs))
+
+    def pack_forget(self):
+        self.mapped = False
+        self.calls.append(("pack_forget", {}))
+
+    def winfo_ismapped(self):
+        return self.mapped
+
+    def winfo_children(self):
+        return self.children
+
+    def cget(self, option):
+        if option not in self.config:
+            raise KeyError(option)
+        return self.config[option]
+
+    def delete(self, *args):
+        self.calls.append(("delete", args))
+
+    def insert(self, *args):
+        self.calls.append(("insert", args))
+
+    def focus_set(self):
+        self.calls.append(("focus_set", {}))
+
+    def tag_configure(self, tag, **kwargs):
+        self.tags.setdefault(tag, {}).update(kwargs)
+
+
+class TestGuiPureHelpers:
+    def test_result_meta_reflects_outcome(self):
+        assert gui._result_meta(True, 0, 0) == ("✓", "全部通过", gui.OK)
+        assert gui._result_meta(True, 2, 0) == ("×", "发现 2 个错误", gui.ERR)
+        assert gui._result_meta(True, 0, 3) == ("!", "发现 3 个警告", gui.WARN)
+        assert gui._result_meta(False, 0, 0) == ("—", "未找到参考文献章节", gui.ERR)
+
+    def test_drop_paths_use_tcl_list_parser(self):
+        paths = gui._split_drop_paths(
+            "ignored raw data",
+            lambda _data: (r"C:\论文 一.docx", r"D:\论文二.docx"),
+        )
+        assert paths == [r"C:\论文 一.docx", r"D:\论文二.docx"]
+
+    def test_drop_paths_have_single_path_fallback(self):
+        def broken_parser(_data):
+            raise ValueError("bad Tcl list")
+
+        assert gui._split_drop_paths(r"{C:\论文 一.docx}", broken_parser) == [
+            r"C:\论文 一.docx"
+        ]
+
+    def test_stage_colors_follow_progress(self):
+        app = gui.App.__new__(gui.App)
+        app.step_labels = [_FakeWidget(), _FakeWidget(), _FakeWidget()]
+        app._set_stage(2, completed=1)
+        assert [label.config["fg"] for label in app.step_labels] == [
+            gui.OK,
+            gui.ACCENT_HI,
+            gui.FAINT,
+        ]
+
+    def test_drop_state_shows_only_requested_panel(self):
+        app = gui.App.__new__(gui.App)
+        app.hero = _FakeWidget(mapped=True)
+        app.busy = _FakeWidget()
+        app.done = _FakeWidget()
+
+        app._show_drop_state("busy")
+        assert not app.hero.mapped and app.busy.mapped and not app.done.mapped
+        app._show_drop_state("done")
+        assert not app.hero.mapped and not app.busy.mapped and app.done.mapped
+        app._show_drop_state("idle")
+        assert app.hero.mapped and not app.busy.mapped and not app.done.mapped
+
+    def test_clear_result_views_resets_caches_and_panels(self):
+        app = gui.App.__new__(gui.App)
+        app._text_cache = "old"
+        app._md_cache = "old"
+        app._fix_cache = "old"
+        app.stats_bar = _FakeWidget(mapped=True)
+        app.fix_panel = _FakeWidget(mapped=True)
+        app.report_box = _FakeWidget()
+        app.toolbar = _FakeWidget(mapped=True)
+        app.report = _FakeWidget()
+        app.btn_fix = _FakeWidget()
+
+        app._clear_result_views()
+
+        assert app._text_cache == ""
+        assert app._md_cache is None
+        assert app._fix_cache == ""
+        assert not app.stats_bar.mapped and not app.fix_panel.mapped
+        assert app.report.config["state"] == "disabled"
+        assert app.btn_fix.config["text"] == "生成修正后列表"
+        assert any(call[0] == "insert" for call in app.report.calls)
+
+    def test_escape_collapses_fix_panel_and_focuses_report(self):
+        app = gui.App.__new__(gui.App)
+        app.fix_panel = _FakeWidget(mapped=True)
+        app.report_box = _FakeWidget()
+        app.toolbar = _FakeWidget(mapped=True)
+        app.report = _FakeWidget()
+        app.step_labels = [_FakeWidget(), _FakeWidget(), _FakeWidget()]
+
+        app._collapse_fix_panel()
+
+        assert not app.fix_panel.mapped
+        assert app.report_box.mapped
+        assert any(call[0] == "focus_set" for call in app.report.calls)
+
+    def test_current_job_failure_returns_to_file_selection(self):
+        app = gui.App.__new__(gui.App)
+        app._job_id = 7
+        app._last_path = r"C:\论文.docx"
+        app.hero = _FakeWidget()
+        app.busy = _FakeWidget(mapped=True)
+        app.done = _FakeWidget()
+        app.step_labels = [_FakeWidget(), _FakeWidget(), _FakeWidget()]
+        app.report = _FakeWidget()
+        app.status = _FakeWidget()
+
+        app._finish_error(7, "文档损坏")
+
+        assert app._last_path is None
+        assert app.hero.mapped and not app.busy.mapped
+        assert "请选择另一份" in app.status.config["text"]
+        inserted = "".join(
+            call[1][1] for call in app.report.calls if call[0] == "insert"
+        )
+        assert "文档损坏" in inserted
+
+    def test_light_theme_recolors_widgets_and_report_tags(self):
+        child = _FakeWidget(background=gui.SURFACE, foreground=gui.TEXT)
+        app = gui.App.__new__(gui.App)
+        app.root = _FakeWidget(children=[child], background=gui.BG)
+        app._theme_name = "dark"
+        app._palette = gui.DARK_THEME
+        app._themed_buttons = []
+        app.report = _FakeWidget()
+        app.fix_text = _FakeWidget()
+        app.btn_theme = _FakeWidget()
+        app._ttk = object()
+        app._style_ttk = lambda _ttk: None
+        app._apply_titlebar_theme = lambda: None
+
+        app._apply_theme("light")
+
+        assert app._theme_name == "light"
+        assert app.root.config["background"] == gui.LIGHT_THEME["BG"]
+        assert child.config["background"] == gui.LIGHT_THEME["SURFACE"]
+        assert child.config["foreground"] == gui.LIGHT_THEME["TEXT"]
+        assert app.report.tags["err"]["foreground"] == gui.LIGHT_THEME["ERR"]
+        assert app.btn_theme.config["text"] == "深色"
+
+    def test_runtime_dark_color_resolves_to_current_theme(self):
+        app = gui.App.__new__(gui.App)
+        app._palette = gui.LIGHT_THEME
+        assert app._resolve_color(gui.ERR) == gui.LIGHT_THEME["ERR"]
+
+
 class TestShouldLaunchGui:
     def test_no_args_means_gui(self, monkeypatch):
         monkeypatch.setattr(gui, "_supports_tk", lambda: True)

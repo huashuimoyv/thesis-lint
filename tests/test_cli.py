@@ -7,6 +7,9 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import pytest
 from docx import Document
 
@@ -84,6 +87,15 @@ class TestExitCodes:
 
 
 class TestUsageErrors:
+    def test_help_is_utf8_in_windows_subprocess(self):
+        completed = subprocess.run(
+            [sys.executable, "-m", "thesislint.cli", "--help"],
+            capture_output=True,
+            check=False,
+        )
+        assert completed.returncode == 0
+        assert "毕业论文" in completed.stdout.decode("utf-8")
+
     def test_missing_file_returns_two(self):
         assert main(["nonexistent.docx"]) == 2
 

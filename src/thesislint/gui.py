@@ -7,6 +7,7 @@
 - THESISLINT_GUI_AUTOCLOSE_MS  窗口 N 毫秒后自动关闭
 - THESISLINT_GUI_AUTODEMO=1    启动后自动用示例论文跑一次体检
 - THESISLINT_GUI_AUTOFIX=1     体检完成后自动生成修正列表
+- THESISLINT_GUI_THEME=light   以浅色主题启动（默认 dark）
 """
 
 from __future__ import annotations
@@ -17,20 +18,67 @@ import sys
 import threading
 from pathlib import Path
 
-# ---- 配色（与网页版同一「夜间自习室」体系）----
-BG = "#0b0e13"
-SURFACE = "#0f141b"
-RAISE = "#131a23"
-LINE = "#1e2630"
-LINE_HI = "#31405a"
-TEXT = "#e6edf3"
-MUTED = "#8b949e"
-FAINT = "#56606b"
-ACCENT = "#5b9bff"
-ACCENT_HI = "#8ab8ff"
-OK = "#7ee787"
-WARN = "#e3b341"
-ERR = "#ff7b72"
+# ---- 配色：深色「夜间自习室」+ 浅色「白纸校样」----
+DARK_THEME = {
+    "BG": "#0b0e13",
+    "SURFACE": "#0f141b",
+    "RAISE": "#131a23",
+    "LINE": "#1e2630",
+    "LINE_HI": "#31405a",
+    "TEXT": "#e6edf3",
+    "MUTED": "#8b949e",
+    "FAINT": "#56606b",
+    "ACCENT": "#5b9bff",
+    "ACCENT_HI": "#8ab8ff",
+    "OK": "#7ee787",
+    "WARN": "#e3b341",
+    "ERR": "#ff7b72",
+    "PAPER": "#182231",
+    "ON_ACCENT": "#07111f",
+    "OK_BG": "#1a3f2a",
+    "OK_BG_HI": "#215237",
+    "SELECT_BG": "#2d4a73",
+}
+
+LIGHT_THEME = {
+    "BG": "#f6f8fa",
+    "SURFACE": "#ffffff",
+    "RAISE": "#eef2f7",
+    "LINE": "#d8dee6",
+    "LINE_HI": "#9fb0c5",
+    "TEXT": "#1f2328",
+    "MUTED": "#59636e",
+    "FAINT": "#7d8996",
+    "ACCENT": "#1f6feb",
+    "ACCENT_HI": "#1158c7",
+    "OK": "#1a7f37",
+    "WARN": "#9a6700",
+    "ERR": "#cf222e",
+    "PAPER": "#dbeafe",
+    "ON_ACCENT": "#f8fbff",
+    "OK_BG": "#dafbe1",
+    "OK_BG_HI": "#c7f0d2",
+    "SELECT_BG": "#b6d7ff",
+}
+
+BG = DARK_THEME["BG"]
+SURFACE = DARK_THEME["SURFACE"]
+RAISE = DARK_THEME["RAISE"]
+LINE = DARK_THEME["LINE"]
+LINE_HI = DARK_THEME["LINE_HI"]
+TEXT = DARK_THEME["TEXT"]
+MUTED = DARK_THEME["MUTED"]
+FAINT = DARK_THEME["FAINT"]
+ACCENT = DARK_THEME["ACCENT"]
+ACCENT_HI = DARK_THEME["ACCENT_HI"]
+OK = DARK_THEME["OK"]
+WARN = DARK_THEME["WARN"]
+ERR = DARK_THEME["ERR"]
+PAPER = DARK_THEME["PAPER"]
+ON_ACCENT = DARK_THEME["ON_ACCENT"]
+OK_BG = DARK_THEME["OK_BG"]
+OK_BG_HI = DARK_THEME["OK_BG_HI"]
+SELECT_BG = DARK_THEME["SELECT_BG"]
 
 
 def _supports_tk() -> bool:
@@ -83,6 +131,26 @@ _DEMO_ENTRIES = [
 ]
 
 
+def _result_meta(found: bool, errors: int, warns: int) -> tuple[str, str, str]:
+    """返回结果条使用的（图标、说明、颜色）。"""
+    if not found:
+        return "—", "未找到参考文献章节", ERR
+    if errors:
+        return "×", f"发现 {errors} 个错误", ERR
+    if warns:
+        return "!", f"发现 {warns} 个警告", WARN
+    return "✓", "全部通过", OK
+
+
+def _split_drop_paths(data: str, splitlist) -> list[str]:
+    """按 Tcl 列表语法解析拖拽路径，兼容空格与多文件。"""
+    try:
+        return [str(item) for item in splitlist(data)]
+    except Exception:  # noqa: BLE001  第三方 DnD 数据异常时保留单路径降级
+        fallback = data.strip().strip("{}")
+        return [fallback] if fallback else []
+
+
 class App:
     def __init__(self) -> None:
         import tkinter as tk
@@ -90,8 +158,19 @@ class App:
         from tkinter import font as tkfont
 
         self._tk = tk
+        self._ttk = ttk
         self._filedialog = filedialog
         self._messagebox = messagebox
+        self._theme_name = "dark"
+        self._palette = DARK_THEME
+        self._themed_buttons = []
+        self._md_cache: str | None = None
+        self._text_cache = ""
+        self._fix_cache = ""
+        self._last_path: str | None = None
+        self._job_id = 0
+        self._hero_mode = "idle"  # idle / busy / done
+        self._pulse_step = False
 
         root = self._make_root(tk)
         self.root = root
@@ -106,18 +185,19 @@ class App:
 
         self._style_ttk(ttk)
         self._build_header()
+        self._build_steps()
         self._build_drop_zone()
         self._build_status()
+        self._build_stats()
         self._build_toolbar()
         self._build_report_view()
         self._build_fix_panel()
-
-        self._md_cache: str | None = None
-        self._text_cache = ""
-        self._fix_cache = ""
-        self._last_path: str | None = None
-        self._hero_mode = "idle"  # idle / done
-        self._pulse_step = False
+        self._bind_shortcuts()
+        self._set_stage(1)
+        if os.environ.get("THESISLINT_GUI_THEME", "dark").lower() == "light":
+            self._apply_theme("light")
+        else:
+            self._apply_titlebar_theme()
         self._pulse()
 
         # 测试钩子
@@ -149,14 +229,42 @@ class App:
             style.theme_use("clam")
         style.configure(
             "TScrollbar",
-            background=RAISE,
-            troughcolor=BG,
-            bordercolor=BG,
-            arrowcolor=MUTED,
-            lightcolor=RAISE,
-            darkcolor=RAISE,
+            background=self._color("RAISE"),
+            troughcolor=self._color("BG"),
+            bordercolor=self._color("BG"),
+            arrowcolor=self._color("MUTED"),
+            lightcolor=self._color("RAISE"),
+            darkcolor=self._color("RAISE"),
         )
-        style.map("TScrollbar", background=[("active", LINE_HI)])
+        style.map("TScrollbar", background=[("active", self._color("LINE_HI"))])
+
+    def _color(self, token: str) -> str:
+        return getattr(self, "_palette", DARK_THEME)[token]
+
+    def _resolve_color(self, color: str) -> str:
+        token = next((key for key, value in DARK_THEME.items() if value == color), None)
+        return self._color(token) if token else color
+
+    def _button_colors(self, kind: str) -> tuple[str, str, str, str]:
+        tokens = {
+            "accent": ("ACCENT", "ON_ACCENT", "ACCENT_HI", "ON_ACCENT"),
+            "ghost": ("RAISE", "TEXT", "LINE_HI", "TEXT"),
+            "warn": ("RAISE", "WARN", "LINE_HI", "WARN"),
+            "ok": ("OK_BG", "OK", "OK_BG_HI", "OK"),
+        }
+        return tuple(self._color(token) for token in tokens[kind])
+
+    def _paint_button(self, btn, kind: str, *, hovered: bool = False):
+        bg, fg, hbg, hfg = self._button_colors(kind)
+        btn.configure(
+            bg=hbg if hovered else bg,
+            fg=hfg if hovered else fg,
+            activebackground=hbg,
+            activeforeground=hfg,
+            disabledforeground=self._color("FAINT"),
+            highlightbackground=bg,
+            highlightcolor=self._color("ACCENT_HI"),
+        )
 
     def _hover(self, btn, normal, hovered):
         btn.bind("<Enter>", lambda _e: btn.configure(bg=hovered))
@@ -164,13 +272,7 @@ class App:
 
     def _button(self, parent, text, command, *, kind="ghost"):
         tk = self._tk
-        styles = {
-            "accent": (ACCENT, "#0b0e13", ACCENT_HI, "#0b0e13"),
-            "ghost": (RAISE, TEXT, LINE_HI, TEXT),
-            "warn": (RAISE, WARN, LINE_HI, WARN),
-            "ok": ("#1a3f2a", OK, "#215237", OK),
-        }
-        bg, fg, hbg, hfg = styles[kind]
+        bg, fg, hbg, hfg = self._button_colors(kind)
         btn = tk.Button(
             parent,
             text=text,
@@ -186,16 +288,94 @@ class App:
             activebackground=hbg,
             activeforeground=hfg,
             disabledforeground=FAINT,
+            highlightthickness=1,
+            highlightbackground=bg,
+            highlightcolor=ACCENT_HI,
+            takefocus=True,
             state="normal",
         )
         btn.bind(
-            "<Enter>", lambda _e: btn.configure(bg=hbg) if str(btn["state"]) == "normal" else None
+            "<Enter>",
+            lambda _e: self._paint_button(btn, kind, hovered=True)
+            if str(btn["state"]) == "normal"
+            else None,
         )
-        btn.bind("<Leave>", lambda _e: btn.configure(bg=bg))
+        btn.bind("<Leave>", lambda _e: self._paint_button(btn, kind))
+        self._themed_buttons.append((btn, kind))
         return btn
 
     def _set_enabled(self, btn, enabled):
         btn.configure(state="normal" if enabled else "disabled")
+
+    def _bind_shortcuts(self):
+        self.root.bind_all("<Control-o>", lambda _e: self.pick_file())
+        self.root.bind_all("<Control-O>", lambda _e: self.pick_file())
+        self.root.bind_all("<Control-Shift-C>", lambda _e: self.copy_report())
+        self.root.bind_all("<Control-t>", lambda _e: self.toggle_theme())
+        self.root.bind_all("<Control-T>", lambda _e: self.toggle_theme())
+        self.root.bind_all("<Escape>", lambda _e: self._collapse_fix_panel())
+
+    def _walk_widgets(self, widget):
+        yield widget
+        for child in widget.winfo_children():
+            yield from self._walk_widgets(child)
+
+    def toggle_theme(self):
+        self._apply_theme("light" if self._theme_name == "dark" else "dark")
+
+    def _apply_theme(self, theme_name: str):
+        old_palette = self._palette
+        new_palette = LIGHT_THEME if theme_name == "light" else DARK_THEME
+        old_colors = {value.lower(): key for key, value in old_palette.items()}
+        color_options = (
+            "background",
+            "foreground",
+            "activebackground",
+            "activeforeground",
+            "disabledforeground",
+            "highlightbackground",
+            "highlightcolor",
+            "insertbackground",
+            "selectbackground",
+            "selectforeground",
+        )
+
+        for widget in self._walk_widgets(self.root):
+            changes = {}
+            for option in color_options:
+                try:
+                    current = str(widget.cget(option)).lower()
+                except Exception:  # noqa: BLE001  不同 Tk 控件支持的颜色选项不同
+                    continue
+                token = old_colors.get(current)
+                if token:
+                    changes[option] = new_palette[token]
+            if changes:
+                widget.configure(**changes)
+
+        self._theme_name = theme_name
+        self._palette = new_palette
+        for button, kind in self._themed_buttons:
+            self._paint_button(button, kind)
+        for text in (self.report, self.fix_text):
+            text.tag_configure("err", foreground=self._color("ERR"))
+            text.tag_configure("warn", foreground=self._color("WARN"))
+            text.tag_configure("head", foreground=self._color("OK"))
+            text.tag_configure("note", foreground=self._color("WARN"))
+        self._style_ttk(self._ttk)
+        self.btn_theme.configure(text="深色" if theme_name == "light" else "浅色")
+        self._apply_titlebar_theme()
+
+    def _apply_titlebar_theme(self):
+        if os.name != "nt":
+            return
+        with contextlib.suppress(Exception):
+            import ctypes
+
+            value = ctypes.c_int(1 if self._theme_name == "dark" else 0)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                self.root.winfo_id(), 20, ctypes.byref(value), ctypes.sizeof(value)
+            )
 
     # ---------- 区块构建 ----------
 
@@ -218,6 +398,44 @@ class App:
         tk.Label(head, text="本地解析 · 不上传", font=(self._ui, 8), bg=BG, fg=FAINT).pack(
             side="right"
         )
+        self.btn_theme = self._button(head, "浅色", self.toggle_theme, kind="ghost")
+        self.btn_theme.pack(side="right", padx=(0, 10))
+
+    def _build_steps(self):
+        tk = self._tk
+        bar = tk.Frame(self.root, bg=BG)
+        bar.pack(fill="x", padx=26, pady=(2, 8))
+        self.step_labels = []
+        for index, text in enumerate(("选择论文", "查看报告", "生成修正"), start=1):
+            label = tk.Label(
+                bar,
+                text=f"{index}  {text}",
+                font=(self._ui, 9, "bold"),
+                bg=BG,
+                fg=FAINT,
+            )
+            label.pack(side="left")
+            self.step_labels.append(label)
+            if index < 3:
+                tk.Label(bar, text="  ─────  ", font=(self._mono, 8), bg=BG, fg=LINE_HI).pack(
+                    side="left"
+                )
+        tk.Label(
+            bar,
+            text="Ctrl+O 选择文件 · Ctrl+T 切换明暗 · Esc 返回报告",
+            font=(self._ui, 8),
+            bg=BG,
+            fg=FAINT,
+        ).pack(side="right")
+
+    def _set_stage(self, active: int, completed: int = 0):
+        for index, label in enumerate(self.step_labels, start=1):
+            color = (
+                self._color("OK")
+                if index <= completed
+                else (self._color("ACCENT_HI") if index == active else self._color("FAINT"))
+            )
+            label.configure(fg=color)
 
     def _build_drop_zone(self):
         tk = self._tk
@@ -254,19 +472,38 @@ class App:
         self.btn_demo = self._button(row, "用示例论文试一试", self.check_demo, kind="ghost")
         self.btn_demo.pack(side="left", padx=5)
 
+        # 检查态：保持紧凑，让报告区尽早进入视野。
+        self.busy = tk.Frame(self.drop, bg=SURFACE)
+        self.busy_mark = tk.Label(
+            self.busy, text="扫描中", font=(self._ui, 9, "bold"), bg=PAPER, fg=ACCENT_HI, padx=9, pady=3
+        )
+        self.busy_mark.pack(side="left")
+        self.busy_name = tk.Label(
+            self.busy, text="", font=(self._mono, 10), bg=SURFACE, fg=TEXT, anchor="w"
+        )
+        self.busy_name.pack(side="left", padx=(12, 0))
+        tk.Label(
+            self.busy,
+            text="正在定位参考文献并逐条检查…",
+            font=(self._ui, 9),
+            bg=SURFACE,
+            fg=MUTED,
+        ).pack(side="right")
+
         # 完成态（收拢成细条）
         self.done = tk.Frame(self.drop, bg=SURFACE)
         self.done_name = tk.Label(self.done, text="", font=(self._mono, 10), bg=SURFACE, fg=OK)
         self.done_name.pack(side="left")
-        tk.Label(
+        self.done_hint = tk.Label(
             self.done,
-            text="  点击或拖入新文件，重新体检",
+            text="点击或拖入新文件，重新检查",
             font=(self._ui, 9),
             bg=SURFACE,
             fg=ACCENT,
-        ).pack(side="left")
+        )
+        self.done_hint.pack(side="right")
 
-        for w in (self.drop, self.hero, self.done):
+        for w in (self.drop, self.hero, self.done, self.done_name, self.done_hint):
             w.bind("<Button-1>", lambda _e: self.pick_file())
         for child in self.hero.winfo_children():
             child.bind("<Button-1>", lambda _e: self.pick_file())
@@ -278,9 +515,27 @@ class App:
         )
         self.status.pack(fill="x", padx=28, pady=(6, 2))
 
+    def _build_stats(self):
+        tk = self._tk
+        self.stats_bar = tk.Frame(self.root, bg=BG)
+        self.stat_values = {}
+        for key, label in (("total", "参考文献"), ("errors", "错误"), ("warns", "警告")):
+            cell = tk.Frame(self.stats_bar, bg=RAISE, highlightthickness=1, highlightbackground=LINE)
+            cell.pack(side="left", fill="x", expand=True, padx=(0, 8 if key != "warns" else 0))
+            value = tk.Label(
+                cell, text="0", font=(self._mono, 15, "bold"), bg=RAISE, fg=TEXT
+            )
+            value.pack(side="left", padx=(12, 7), pady=7)
+            tk.Label(cell, text=label, font=(self._ui, 8), bg=RAISE, fg=MUTED).pack(side="left")
+            self.stat_values[key] = value
+
     def _build_toolbar(self):
         bar = self._tk.Frame(self.root, bg=BG)
+        self.toolbar = bar
         bar.pack(fill="x", padx=26, pady=(6, 8))
+        self._tk.Label(
+            bar, text="检查报告", font=(self._ui, 10, "bold"), bg=BG, fg=TEXT
+        ).pack(side="left", padx=(0, 14))
         self.btn_copy = self._button(bar, "复制报告", self.copy_report, kind="ghost")
         self.btn_md = self._button(bar, "导出 Markdown", self.export_md, kind="ghost")
         self.btn_fix = self._button(bar, "生成修正后列表", self.generate_fix, kind="warn")
@@ -341,19 +596,24 @@ class App:
         self.fix_box, self.fix_text = frame, text
         frame.pack(fill="both", expand=True)
 
-        row = tk.Frame(self.fix_panel, bg=BG)
-        row.pack(fill="x", pady=(8, 0))
         tk.Label(
-            row,
+            self.fix_panel,
             text="⚠︎ 重新编号后请同步修改正文引用编号；粘贴回 Word 后建议再人工过一遍",
             font=(self._ui, 8),
             bg=BG,
             fg=FAINT,
-        ).pack(side="left")
+            anchor="w",
+        ).pack(fill="x", pady=(8, 4))
+        row = tk.Frame(self.fix_panel, bg=BG)
+        row.pack(fill="x")
         self.btn_fix_copy = self._button(row, "复制修正后条目", self.copy_fix, kind="ok")
         self.btn_fix_copy.pack(side="right")
         self.btn_fix_txt = self._button(row, "导出 txt", self.export_fix_txt, kind="ghost")
         self.btn_fix_txt.pack(side="right", padx=(0, 8))
+        self.btn_fix_close = self._button(
+            row, "返回检查报告", self._collapse_fix_panel, kind="ghost"
+        )
+        self.btn_fix_close.pack(side="right", padx=(0, 8))
 
     # ---------- 动效 ----------
 
@@ -362,7 +622,18 @@ class App:
         try:
             if self._hero_mode == "idle":
                 self._pulse_step = not self._pulse_step
-                self.drop.configure(highlightbackground=LINE_HI if self._pulse_step else LINE)
+                self.drop.configure(
+                    highlightbackground=self._color("LINE_HI")
+                    if self._pulse_step
+                    else self._color("LINE")
+                )
+            elif self._hero_mode == "busy":
+                self._pulse_step = not self._pulse_step
+                self.drop.configure(
+                    highlightbackground=self._color("ACCENT")
+                    if self._pulse_step
+                    else self._color("LINE_HI")
+                )
             self.root.after(700, self._pulse)
         except self._tk.TclError:
             pass  # 窗口已关闭
@@ -377,15 +648,13 @@ class App:
             self.check(path)
 
     def _on_drop(self, event):
-        data = event.data.strip()
-        if data.startswith("{") and data.endswith("}"):
-            data = data[1:-1]
-        if data.lower().endswith(".docx"):
-            self.check(data)
-        else:
+        paths = _split_drop_paths(event.data, self.root.tk.splitlist)
+        if len(paths) != 1:
             self._messagebox.showwarning(
-                "不支持的文件", "目前只支持 .docx 文件。\n如果是 .doc，请先用 Word 另存为 .docx。"
+                "请一次拖入一个文件", "检测到多个文件。请只拖入一篇 Word 论文进行检查。"
             )
+            return
+        self.check(paths[0])
 
     def check_demo(self):
         import tempfile
@@ -408,20 +677,71 @@ class App:
 
     # ---------- 分析 ----------
 
+    def _show_drop_state(self, mode: str):
+        self._hero_mode = mode
+        self.hero.pack_forget()
+        self.busy.pack_forget()
+        self.done.pack_forget()
+        if mode == "idle":
+            self.hero.pack(pady=34)
+        elif mode == "busy":
+            self.busy.pack(fill="x", padx=20, pady=13)
+        else:
+            self.done.pack(fill="x", padx=20, pady=13)
+
+    def _clear_result_views(self):
+        self._text_cache = ""
+        self._md_cache = None
+        self._fix_cache = ""
+        self.stats_bar.pack_forget()
+        self._show_report_panel()
+        self.report.configure(state="normal")
+        self.report.delete("1.0", "end")
+        self.report.insert("end", "正在读取 Word 文档并定位参考文献…", ("note",))
+        self.report.configure(state="disabled")
+        self.btn_fix.configure(text="生成修正后列表")
+
+    def _show_report_panel(self):
+        self.fix_panel.pack_forget()
+        self.report_box.pack_forget()
+        self.report_box.pack(
+            fill="both", expand=True, padx=26, pady=(0, 4), after=self.toolbar
+        )
+
     def check(self, path: str, display_name: str | None = None):
-        self._last_path = path
-        self._display_name = display_name or Path(path).name
-        self._hero_mode = "idle"
+        source = Path(path)
+        if source.suffix.lower() != ".docx":
+            self._messagebox.showwarning(
+                "不支持的文件", "目前只支持 .docx 文件。\n如果是 .doc，请先用 Word 另存为 .docx。"
+            )
+            return
+        if not source.is_file():
+            self._set_status(f"文件不存在或无法读取：{source}", ERR)
+            return
+
+        self._job_id += 1
+        job_id = self._job_id
+        self._last_path = str(source)
+        self._display_name = display_name or source.name
+        self._clear_result_views()
+        self._show_drop_state("busy")
+        self.busy_name.configure(text=self._display_name)
+        self._set_stage(2, completed=1)
         self._set_status(f"正在检查 {self._display_name} …", ACCENT)
-        self.drop.configure(highlightbackground=LINE, highlightcolor=LINE)
+        self.drop.configure(
+            highlightbackground=self._color("LINE"), highlightcolor=self._color("LINE")
+        )
         for b in (self.btn_copy, self.btn_md, self.btn_fix):
             self._set_enabled(b, False)
-        self.fix_panel.pack_forget()
         self._set_enabled(self.btn_fix_copy, False)
         self._set_enabled(self.btn_fix_txt, False)
-        threading.Thread(target=self._work, args=(path, self._display_name), daemon=True).start()
+        threading.Thread(
+            target=self._work,
+            args=(str(source), self._display_name, job_id),
+            daemon=True,
+        ).start()
 
-    def _work(self, path: str, display_name: str):
+    def _work(self, path: str, display_name: str, job_id: int):
         try:
             from .cli import analyze
             from .report import build_markdown_report, build_text_report
@@ -429,34 +749,56 @@ class App:
             report = analyze(Path(path))
             text = build_text_report(report)
             md = build_markdown_report(report)
-            summary = f"完成：{report.error_count} 个错误，{report.warn_count} 个警告"
-            color = ERR if report.error_count else (WARN if report.warn_count else OK)
             found = report.found_section
+            if found:
+                summary = f"完成：{report.error_count} 个错误，{report.warn_count} 个警告"
+                color = ERR if report.error_count else (WARN if report.warn_count else OK)
+            else:
+                summary = "未找到参考文献章节，请检查章节标题"
+                color = ERR
             stats = {
                 "total": len(report.entries),
                 "errors": report.error_count,
                 "warns": report.warn_count,
             }
             self.root.after(
-                0, lambda: self._finish(path, display_name, text, md, summary, color, found, stats)
+                0,
+                lambda: self._finish(
+                    job_id, path, display_name, text, md, summary, color, found, stats
+                ),
             )
         except Exception as exc:  # 解析失败等  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             detail = str(exc) or exc.__class__.__name__
-            self.root.after(0, lambda: self._finish_error(detail))
+            self.root.after(0, lambda: self._finish_error(job_id, detail))
 
-    def _finish(self, path, display_name, text, md, summary, color, found, stats):
-        if self._last_path != path:
+    def _finish(self, job_id, path, display_name, text, md, summary, color, found, stats):
+        if job_id != self._job_id or self._last_path != path:
             return
         self._text_cache = text
         self._md_cache = md
 
-        # 拖拽区收拢为细条
-        self._hero_mode = "done"
-        self.hero.pack_forget()
-        self.done_name.configure(text=f"✓ {display_name}  {stats['total']} 条参考文献")
-        self.done.pack(pady=13, padx=20, fill="x")
+        icon, result_label, result_color = _result_meta(found, stats["errors"], stats["warns"])
+        self.done_name.configure(
+            text=f"{icon}  {display_name} · {result_label}",
+            fg=self._resolve_color(result_color),
+        )
+        self._show_drop_state("done")
+        self._set_stage(2, completed=1)
 
         self._set_status(summary, color)
+        if found:
+            self.stat_values["total"].configure(
+                text=str(stats["total"]), fg=self._color("TEXT")
+            )
+            self.stat_values["errors"].configure(
+                text=str(stats["errors"]),
+                fg=self._color("ERR") if stats["errors"] else self._color("MUTED"),
+            )
+            self.stat_values["warns"].configure(
+                text=str(stats["warns"]),
+                fg=self._color("WARN") if stats["warns"] else self._color("MUTED"),
+            )
+            self.stats_bar.pack(fill="x", padx=26, pady=(7, 2), before=self.toolbar)
         # 报告（带色渲染）
         self.report.configure(state="normal")
         self.report.delete("1.0", "end")
@@ -477,15 +819,24 @@ class App:
         self._set_enabled(self.btn_copy, True)
         self._set_enabled(self.btn_md, True)
 
-        if self._auto_fix_pending:
+        if self._auto_fix_pending and found and stats["total"] > 0:
             self._auto_fix_pending = False
             self.root.after(200, self.generate_fix)
 
-    def _finish_error(self, detail: str):
-        self._set_status(f"检查失败：{detail}", ERR)
+    def _finish_error(self, job_id: int, detail: str):
+        if job_id != self._job_id:
+            return
+        self._last_path = None
+        self._show_drop_state("idle")
+        self._set_stage(1)
+        self.report.configure(state="normal")
+        self.report.delete("1.0", "end")
+        self.report.insert("end", f"无法读取这份文档。\n\n{detail}\n\n请确认文件未损坏且不是旧版 .doc 格式。", ("err",))
+        self.report.configure(state="disabled")
+        self._set_status("检查失败，请选择另一份 .docx 文件", ERR)
 
     def _set_status(self, msg: str, color: str):
-        self.status.configure(text=msg, fg=color)
+        self.status.configure(text=msg, fg=self._resolve_color(color))
 
     # ---------- 修正列表 ----------
 
@@ -493,11 +844,13 @@ class App:
         if not self._last_path:
             return
         self._set_enabled(self.btn_fix, False)
+        self._set_stage(3, completed=2)
         self._set_status("正在生成修正后列表 …", ACCENT)
         path = self._last_path
-        threading.Thread(target=self._fix_work, args=(path,), daemon=True).start()
+        job_id = self._job_id
+        threading.Thread(target=self._fix_work, args=(path, job_id), daemon=True).start()
 
-    def _fix_work(self, path: str):
+    def _fix_work(self, path: str, job_id: int):
         try:
             from .cli import analyze
             from .fixer import fix_entries
@@ -523,14 +876,20 @@ class App:
                     manual_lines
                 )
             self.root.after(
-                0, lambda: self._finish_fix(fix_display, header, body, len(manual_lines))
+                0,
+                lambda: self._finish_fix(
+                    job_id, fix_display, header, body, len(manual_lines)
+                ),
             )
         except Exception as exc:  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             detail = str(exc) or exc.__class__.__name__
-            self.root.after(0, lambda: self._set_status(f"生成失败：{detail}", ERR))
-            self.root.after(0, lambda: self._set_enabled(self.btn_fix, True))
+            self.root.after(0, lambda: self._finish_fix_error(job_id, detail))
 
-    def _finish_fix(self, fix_display: str, header: str, body: str, n_manual: int):
+    def _finish_fix(
+        self, job_id: int, fix_display: str, header: str, body: str, n_manual: int
+    ):
+        if job_id != self._job_id:
+            return
         self._fix_cache = body
         self.fix_stats.configure(text=header)
         self.fix_text.configure(state="normal")
@@ -544,10 +903,27 @@ class App:
                 tags = ()
             self.fix_text.insert("end", line, tags)
         self.fix_text.configure(state="disabled")
+        self.report_box.pack_forget()
         self.fix_panel.pack(fill="both", expand=True, padx=26, pady=(0, 6))
         self._set_enabled(self.btn_fix_copy, True)
         self._set_enabled(self.btn_fix_txt, True)
+        self.btn_fix.configure(text="重新生成修正后列表")
+        self._set_enabled(self.btn_fix, True)
+        self._set_stage(3, completed=3)
         self._set_status("修正后列表已生成，可一键复制", OK if n_manual == 0 else WARN)
+
+    def _finish_fix_error(self, job_id: int, detail: str):
+        if job_id != self._job_id:
+            return
+        self._set_stage(2, completed=1)
+        self._set_status(f"生成失败：{detail}", ERR)
+        self._set_enabled(self.btn_fix, True)
+
+    def _collapse_fix_panel(self):
+        if self.fix_panel.winfo_ismapped():
+            self._show_report_panel()
+            self._set_stage(2, completed=1)
+            self.report.focus_set()
 
     # ---------- 导出 ----------
 

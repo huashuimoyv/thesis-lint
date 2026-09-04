@@ -19,7 +19,14 @@ class TestSingleEntryFixes:
         r = fix_entry("[4] 张三, 李四, 王五, 赵六. 某研究[J]. 学报, 2024, 1(1): 1-9.", 4)
         assert "张三, 李四, 王五, 等" in r.fixed
         assert "赵六" not in r.fixed
+        assert "某研究[J]" in r.fixed
         assert any("截断" in f for f in r.fixes)
+
+    def test_commas_in_title_do_not_trigger_author_truncation(self):
+        original = "[1] 张三. 关于甲, 乙, 丙, 丁的研究[J]. 学报, 2024, 1(1): 1-9."
+        r = fix_entry(original, 1)
+        assert r.fixed == original
+        assert not any("截断" in f for f in r.fixes)
 
     def test_three_authors_untouched(self):
         original = "[1] 张三, 李四, 王五. 某研究[J]. 学报, 2024, 1(1): 1-9."
@@ -41,6 +48,12 @@ class TestSingleEntryFixes:
         r = fix_entry("[2] 李四. 论文名称. 学报, 2024, 1(1): 1-9.", 2)
         assert any("类型标识" in u for u in r.unresolved)
 
+    def test_missing_tag_does_not_trigger_author_truncation(self):
+        original = "[1] 张三, 李四, 王五, 赵六. 论文名称. 学报, 2024."
+        r = fix_entry(original, 1)
+        assert r.fixed == original
+        assert not any("截断" in f for f in r.fixes)
+
     def test_missing_year_marked_unresolved(self):
         r = fix_entry("[2] 李四. 论文名称[J]. 学报.", 2)
         assert any("年份" in u for u in r.unresolved)
@@ -48,6 +61,11 @@ class TestSingleEntryFixes:
     def test_ol_without_url_marked_unresolved(self):
         r = fix_entry("[5] 某机构. 报告[R/OL]. (2024-01-01)[2025-01-01].", 5)
         assert any("网址" in u for u in r.unresolved)
+
+    def test_ol_text_outside_type_tag_is_not_treated_as_online(self):
+        original = "[1] 张三. A/OL 算法研究[J]. 学报, 2024, 1(1): 1-9."
+        r = fix_entry(original, 1)
+        assert r.unresolved == []
 
     def test_remaining_warnings_counted(self):
         # 西文姓名未缩写：我们故意不自动修（防止误改），只数剩余警告

@@ -33,6 +33,10 @@ class TestErrors:
         issues = check_entry("[1] 某某机构. 报告[R/OL]. (2024-01-01)[2025-01-01].")
         assert any(i.code == "E003" and i.level == ERROR for i in issues)
 
+    def test_online_accepts_uppercase_url_scheme(self):
+        entry = "[1] 某机构. 报告[R/OL]. (2024-01-01)[2025-01-01]. HTTPS://EXAMPLE.COM."
+        assert not any(i.code == "E003" for i in check_entry(entry))
+
     def test_missing_year(self):
         issues = check_entry("[1] 张三. 论文名称[J]. 计算机学报.")
         assert any(i.code == "E004" for i in issues)
@@ -43,6 +47,11 @@ class TestWarnings:
         entry = "[1] 张三, 李四, 王五, 赵六. 论文名称[J]. 学报, 2024, 1(1): 1-9."
         codes = [i.code for i in check_entry(entry)]
         assert "W003" in codes
+
+    def test_commas_in_title_are_not_counted_as_authors(self):
+        entry = "[1] 张三. 关于甲, 乙, 丙, 丁的研究[J]. 学报, 2024, 1(1): 1-9."
+        codes = [i.code for i in check_entry(entry)]
+        assert "W003" not in codes
 
     def test_three_authors_with_et_al_ok(self):
         entry = "[1] 张三, 李四, 王五, 等. 论文名称[J]. 学报, 2024, 1(1): 1-9."

@@ -74,6 +74,12 @@ def build_text_report(report: Report) -> str:
 
 
 def build_markdown_report(report: Report) -> str:
+    if not report.found_section:
+        return (
+            f"# 参考文献体检报告：{report.source}\n\n"
+            "未找到参考文献章节。请确认文档中有“参考文献”标题。\n"
+        )
+
     rows = ["| 条目 | 行号 | 级别 | 问题 |", "|---|---|---|---|"]
     for entry in report.entries:
         text = entry.text[:40].replace("|", "\\|")

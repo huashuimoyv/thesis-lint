@@ -52,6 +52,9 @@ def _force_utf8_stdio() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # argparse 的 --help 与用法错误会在 parse_args 内直接输出，必须在建 parser 前设置编码。
+    _force_utf8_stdio()
+
     parser = argparse.ArgumentParser(
         prog="thesislint",
         description="毕业论文「国标体检」：检查 Word 文档参考文献是否符合 GB/T 7714-2025",
@@ -78,8 +81,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.docx is None:
         parser.print_help()
         return 2
-
-    _force_utf8_stdio()
 
     if args.docx.suffix.lower() != ".docx":
         print(

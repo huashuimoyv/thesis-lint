@@ -17,6 +17,7 @@ from .patterns import (
     TAG_RE,
     URL_RE,
     YEAR_RE,
+    author_zone_bounds,
 )
 
 ERROR = "ERROR"
@@ -53,11 +54,6 @@ class Issue:
         return f"[{self.level}] {self.code}: {self.message}"
 
 
-def _author_zone(body: str, tag_start: int) -> str:
-    """作者区近似提取：文献类型标识之前的文本。"""
-    return body[:tag_start] if tag_start >= 0 else body
-
-
 def check_entry(raw: str) -> list[Issue]:
     """校验单条参考文献条目，返回全部问题。"""
     issues: list[Issue] = []
@@ -89,7 +85,8 @@ def check_entry(raw: str) -> list[Issue]:
     if not YEAR_RE.search(body):
         issues.append(Issue(ERROR, "E004", "缺少出版年份（4 位数字）"))
 
-    zone = _author_zone(body, tag_m.start() if tag_m else -1)
+    bounds = author_zone_bounds(text)
+    zone = text[bounds[0] : bounds[1]] if bounds else ""
     # “等”与西文惯用的“et al.”均视为已正确缩略作者列表
     has_et_al = ", 等" in zone or "，等" in zone or "et al" in zone.lower()
     if not has_et_al and zone.count(",") + zone.count("，") >= 3:

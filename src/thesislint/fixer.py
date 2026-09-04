@@ -19,6 +19,7 @@ from .patterns import (
     TAG_RE,
     URL_RE,
     YEAR_RE,
+    author_zone_bounds,
 )
 
 # 用于截断作者：至少要有 [类型标识] 才能可靠界定作者区
@@ -33,19 +34,6 @@ class EntryFix:
     fixes: list[str] = field(default_factory=list)  # 已自动应用的修正说明
     unresolved: list[str] = field(default_factory=list)  # 需人工处理的原因
     remaining_warnings: int = 0  # 修正后仍剩余的警告数
-
-
-def _author_zone_bounds(text: str) -> tuple[int, int] | None:
-    """作者区 = 条目主体（去掉序号）开头到 [类型标识] 之前。"""
-    m = TAG_RE.search(text)
-    if not m:
-        return None
-    num = NUM_RE.match(text)
-    # start(2) = 序号前缀 "[n] " 之后的主体起点
-    body_start = num.start(2) if num else 0
-    if m.start() <= body_start:
-        return None
-    return body_start, m.start()
 
 
 def fix_entry(text: str, new_index: int) -> EntryFix:
@@ -78,28 +66,25 @@ def fix_entry(text: str, new_index: int) -> EntryFix:
     work = re.sub(r"\s{2,}", " ", work)
 
     # 4. 作者区修整：仅当类型标识存在时才可靠
-    bounds = _author_zone_bounds(work)
+    bounds = author_zone_bounds(work)
     if bounds:
         zone = work[bounds[0] : bounds[1]]
         has_et_al = ("等" in zone) or ("et al" in zone.lower())
         if not has_et_al:
-            core = zone.rstrip()
-            ended = core.endswith(".")
-            if ended:
-                core = core[:-1].rstrip()
-            parts = [p.strip() for p in _AUTHOR_SPLIT_RE.split(core) if p.strip()]
-            # 每段都短（像作者名）才动手，防止误伤含长标题的解析结果
+            parts = [p.strip() for p in _AUTHOR_SPLIT_RE.split(zone) if p.strip()]
+            # 作者区已由“作者. 题名”分隔符限定；每段仍须像短作者名才自动修改。
             if len(parts) >= 4 and all(len(p) <= 40 for p in parts):
-                new_zone = ", ".join(parts[:3]) + ", 等" + ("." if ended else "")
+                new_zone = ", ".join(parts[:3]) + ", 等"
                 work = work[: bounds[0]] + new_zone + work[bounds[1] :]
                 fixes.append("作者超过 3 人，截断为前 3 名并加 “, 等”")
 
     # 5. 检查无法自动解决的问题（与 checker 的 ERROR 对应）
-    if not TAG_RE.search(work):
+    tag_match = TAG_RE.search(work)
+    if not tag_match:
         unresolved.append("缺少文献类型标识（[J]/[M]/[D]/[C]/[EB/OL]…），无法自动判断文献类型")
     if not YEAR_RE.search(work):
         unresolved.append("缺少出版年份，请自行补充")
-    if "/OL" in work:
+    if tag_match and "/OL" in tag_match.group(1):
         if not URL_RE.search(work):
             unresolved.append("电子资源缺少获取路径（网址）")
         if not CITE_DATE_RE.search(work):

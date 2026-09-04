@@ -1,7 +1,7 @@
 """从 .docx 文档中定位并提取参考文献条目。
 
 只处理普通段落文本；参考文献段以标题（如“参考文献”）开始，
-到下一个同级/任意 Heading 或常见后继章节（致谢、附录等）为止。
+到下一个同级/更高级 Heading 或常见后继章节（致谢、附录等）为止。
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ _SECTION_STOP = re.compile(
 )
 
 _HEADING_HINT = re.compile(r"heading|标题", re.IGNORECASE)
+_HEADING_LEVEL = re.compile(r"(?:heading|标题)\s*([1-9])", re.IGNORECASE)
 _ENTRY_START = re.compile(r"^\[(\d+)\]\s*(.*)$")
 
 
@@ -34,6 +35,27 @@ def _is_heading(paragraph) -> bool:
     return bool(_HEADING_HINT.search(style))
 
 
+def _heading_level(paragraph) -> int | None:
+    style = getattr(getattr(paragraph, "style", None), "name", "") or ""
+    match = _HEADING_LEVEL.search(style)
+    return int(match.group(1)) if match else None
+
+
+def _paragraph_text(paragraph) -> str:
+    """合并段落内的手动换行与连续空白，避免正则只读取第一行。"""
+    return " ".join((getattr(paragraph, "text", "") or "").split())
+
+
+def _section_heading_pattern(section_keyword: str) -> re.Pattern[str] | None:
+    keyword = section_keyword.strip()
+    if not keyword:
+        return None
+    spaced_keyword = r"\s*".join(map(re.escape, keyword))
+    number = r"(?:\d+(?:\.\d+)*|[一二三四五六七八九十百]+)"
+    prefix = rf"(?:(?:第\s*)?{number}\s*(?:章)?\s*[.．、]?\s*)?"
+    return re.compile(rf"^{prefix}{spaced_keyword}\s*[:：]?\s*$", re.IGNORECASE)
+
+
 def find_bibliography(paragraphs, section_keyword: str = "参考文献") -> Bibliography:
     """扫描段落列表，返回参考文献部分。
 
@@ -41,15 +63,21 @@ def find_bibliography(paragraphs, section_keyword: str = "参考文献") -> Bibl
     section_keyword: 章节标题关键词，允许中间夹杂空白字符。
     """
     result = Bibliography()
-    keyword_re = re.compile(r"\s*".join(map(re.escape, section_keyword)) + r"\s*$")
+    paragraphs = list(paragraphs)
+    keyword_re = _section_heading_pattern(section_keyword)
+    if keyword_re is None:
+        return result
 
     start = None
+    section_level = None
     for i, p in enumerate(paragraphs):
-        text = (p.text or "").strip()
+        text = _paragraph_text(p)
         if not text:
             continue
-        if keyword_re.fullmatch(text) and (_is_heading(p) or len(text) <= 10):
+        compact_length = len(re.sub(r"\s+", "", text))
+        if keyword_re.fullmatch(text) and (_is_heading(p) or compact_length <= 10):
             start = i + 1
+            section_level = _heading_level(p)
             result.found = True
             result.heading_text = text
             break
@@ -59,10 +87,16 @@ def find_bibliography(paragraphs, section_keyword: str = "参考文献") -> Bibl
 
     current: list[str] | None = None
     for i in range(start, len(paragraphs)):
-        raw = (paragraphs[i].text or "").strip()
+        paragraph = paragraphs[i]
+        raw = _paragraph_text(paragraph)
         if not raw:
             continue
-        if _is_heading(paragraphs[i]) or _SECTION_STOP.match(raw):
+        if _SECTION_STOP.match(raw):
+            break
+        if _is_heading(paragraph):
+            level = _heading_level(paragraph)
+            if section_level is not None and level is not None and level > section_level:
+                continue
             break
 
         m = _ENTRY_START.match(raw)
