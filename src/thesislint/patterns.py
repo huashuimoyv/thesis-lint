@@ -29,6 +29,7 @@ def author_zone_bounds(text: str) -> tuple[int, int] | None:
         return None
     return body_start, separator.start()
 
+
 # ---- 字段校验 ----
 YEAR_RE = re.compile(r"(?:\d{4}|\(\d{4}-\d{2}-\d{2}\))")
 URL_RE = re.compile(r"https?://", re.IGNORECASE)

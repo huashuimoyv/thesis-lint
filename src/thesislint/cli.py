@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         if should_launch_gui(raw):
             from .gui import run_gui
 
-            return run_gui()
+            return run_gui(Path(raw[0]) if raw else None)
 
     args = parser.parse_args(raw)
 

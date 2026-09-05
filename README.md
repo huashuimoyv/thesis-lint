@@ -63,12 +63,14 @@ flowchart LR
 </details>
 
 <details>
-<summary><b>方式一：便携版（Windows 桌面，深色图形界面）</b></summary>
+<summary><b>方式一：便携版（Windows 桌面，黑白双主题）</b></summary>
 
 1. 从 [Releases](https://github.com/huashuimoyv/thesis-lint/releases/latest) 下载 `thesis-lint-vX.Y.Z-windows-x64-portable.zip`
 2. 解压后**双击 `thesislint.exe`**：拖入论文（或点击选择、直接拖到 exe 图标）自动体检
 3. 报告显示在窗口里，支持**生成修正后列表**并一键复制/导出，与网页版功能一致
 4. 高级用法：命令行带参数 `thesislint.exe 论文.docx --format md` 等，行为与 pip 安装版一致
+
+修正列表以当前检查报告为准，不会修改原文档。如果检查后又在 Word 中编辑了论文，请重新检查后再生成修正列表。
 
 </details>
 
@@ -92,6 +94,8 @@ thesislint 论文.docx --strict       # CI 中使用：有警告也算失败
 </details>
 
 ## 🩺 规则总览
+
+支持同一 Word 段落内用手动换行分隔的多条文献：换行后以 `[n]` 开头时按新条目检查，普通折行仍合并到上一条。
 
 | 级别 | 规则 | 示例 |
 |:---:|------|------|
@@ -136,7 +140,14 @@ Roadmap 中的「学校规则预设包」会为每所学校维护一份检查配
 git clone https://github.com/huashuimoyv/thesis-lint.git
 cd thesis-lint
 pip install -e ".[dev]"
-pytest          # 22 个测试应该全绿
+pytest          # 运行回归测试（真实桌面测试默认跳过）
+```
+
+在具备 Tk 桌面环境的 Windows 上，可额外检查黑白主题的打开、检查、修正和导出流程：
+
+```powershell
+$env:THESISLINT_RUN_GUI_TESTS = "1"
+pytest tests/test_gui_live.py --no-cov
 ```
 
 欢迎任何形式的贡献：新规则、Bug 反馈、文档改进、把它推荐给你的同学 😊

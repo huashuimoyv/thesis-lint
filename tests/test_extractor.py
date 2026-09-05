@@ -99,8 +99,38 @@ class TestExtractor:
         paras = fake_paragraphs(("参考文献", True))
         assert not find_bibliography(paras, "").found
 
+    def test_multiple_entries_in_one_paragraph(self):
+        paras = fake_paragraphs(
+            ("参考文献", True),
+            ("[1] 张三. 文一[J].\n学报, 2024.\n[2] 李四. 文二[J]. 学报, 2023.", False),
+            ("致谢", True),
+        )
+        bib = find_bibliography(paras)
+        assert bib.entries == [
+            "[1] 张三. 文一[J]. 学报, 2024.",
+            "[2] 李四. 文二[J]. 学报, 2023.",
+        ]
+        assert bib.line_numbers == [2, 2]
+
+    def test_inline_brackets_are_not_new_entries(self):
+        entry = "[1] 张三. 对照 [2] 的方法[J]. 学报, 2024."
+        bib = find_bibliography(fake_paragraphs(("参考文献", True), (entry, False)))
+        assert bib.entries == [entry]
+
 
 class TestCliAnalyze:
+    def test_duplicate_number_after_manual_break_is_reported(self, tmp_path):
+        from docx import Document
+
+        doc = Document()
+        doc.add_heading("参考文献", level=1)
+        doc.add_paragraph("[1] 张三. 文一[J]. 学报, 2024.\n[1] 李四. 文二[J]. 学报, 2023.")
+        path = tmp_path / "multiple-entries.docx"
+        doc.save(path)
+        report = analyze(path)
+        assert len(report.entries) == 2
+        assert any(issue.code == "S002" for issue in report.section_issues)
+
     def test_analyze_real_docx(self, tmp_path):
         from docx import Document
 

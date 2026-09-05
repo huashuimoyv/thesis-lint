@@ -65,9 +65,7 @@ class TestGuiPureHelpers:
         def broken_parser(_data):
             raise ValueError("bad Tcl list")
 
-        assert gui._split_drop_paths(r"{C:\论文 一.docx}", broken_parser) == [
-            r"C:\论文 一.docx"
-        ]
+        assert gui._split_drop_paths(r"{C:\论文 一.docx}", broken_parser) == [r"C:\论文 一.docx"]
 
     def test_stage_colors_follow_progress(self):
         app = gui.App.__new__(gui.App)
@@ -144,9 +142,7 @@ class TestGuiPureHelpers:
         assert app._last_path is None
         assert app.hero.mapped and not app.busy.mapped
         assert "请选择另一份" in app.status.config["text"]
-        inserted = "".join(
-            call[1][1] for call in app.report.calls if call[0] == "insert"
-        )
+        inserted = "".join(call[1][1] for call in app.report.calls if call[0] == "insert")
         assert "文档损坏" in inserted
 
     def test_light_theme_recolors_widgets_and_report_tags(self):

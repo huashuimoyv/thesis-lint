@@ -17,6 +17,7 @@ _SECTION_STOP = re.compile(
 _HEADING_HINT = re.compile(r"heading|标题", re.IGNORECASE)
 _HEADING_LEVEL = re.compile(r"(?:heading|标题)\s*([1-9])", re.IGNORECASE)
 _ENTRY_START = re.compile(r"^\[(\d+)\]\s*(.*)$")
+_ENTRY_BREAK = re.compile(r"[\r\n]+(?=[^\S\r\n]*\[\d+\])")
 
 
 @dataclass
@@ -99,21 +100,22 @@ def find_bibliography(paragraphs, section_keyword: str = "参考文献") -> Bibl
                 continue
             break
 
-        m = _ENTRY_START.match(raw)
-        if m:
-            if current is not None:
-                result.entries.append(" ".join(current))
-            # 保留完整原文（含序号），序号解析由 checker 负责
-            current = [raw]
-            result.line_numbers.append(i + 1)
-        elif current is not None:
-            # 不以 [n] 开头的行视为上一条目的折行，直接拼接
-            current.append(raw)
-        else:
-            # 区内开头就是无序号正文：视为丢了序号的条目，交给 checker 报 E001，
-            # 而不是静默跳过（否则"缺序号"这种错误用户永远看不到）
-            current = [raw]
-            result.line_numbers.append(i + 1)
+        # 先按“换行 + 新序号”分条，再合并普通折行；同一段中的条目共享段落号。
+        for fragment in _ENTRY_BREAK.split(paragraph.text or ""):
+            entry_text = " ".join(fragment.split())
+            if not entry_text:
+                continue
+            if _ENTRY_START.match(entry_text):
+                if current is not None:
+                    result.entries.append(" ".join(current))
+                current = [entry_text]
+                result.line_numbers.append(i + 1)
+            elif current is not None:
+                current.append(entry_text)
+            else:
+                # 缺号条目也保留，交给 checker 报 E001。
+                current = [entry_text]
+                result.line_numbers.append(i + 1)
 
     if current is not None:
         result.entries.append(" ".join(current))

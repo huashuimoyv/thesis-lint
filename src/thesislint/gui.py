@@ -168,6 +168,7 @@ class App:
         self._text_cache = ""
         self._fix_cache = ""
         self._last_path: str | None = None
+        self._entry_snapshot: tuple[str, ...] = ()
         self._job_id = 0
         self._hero_mode = "idle"  # idle / busy / done
         self._pulse_step = False
@@ -296,9 +297,11 @@ class App:
         )
         btn.bind(
             "<Enter>",
-            lambda _e: self._paint_button(btn, kind, hovered=True)
-            if str(btn["state"]) == "normal"
-            else None,
+            lambda _e: (
+                self._paint_button(btn, kind, hovered=True)
+                if str(btn["state"]) == "normal"
+                else None
+            ),
         )
         btn.bind("<Leave>", lambda _e: self._paint_button(btn, kind))
         self._themed_buttons.append((btn, kind))
@@ -475,7 +478,13 @@ class App:
         # 检查态：保持紧凑，让报告区尽早进入视野。
         self.busy = tk.Frame(self.drop, bg=SURFACE)
         self.busy_mark = tk.Label(
-            self.busy, text="扫描中", font=(self._ui, 9, "bold"), bg=PAPER, fg=ACCENT_HI, padx=9, pady=3
+            self.busy,
+            text="扫描中",
+            font=(self._ui, 9, "bold"),
+            bg=PAPER,
+            fg=ACCENT_HI,
+            padx=9,
+            pady=3,
         )
         self.busy_mark.pack(side="left")
         self.busy_name = tk.Label(
@@ -520,11 +529,11 @@ class App:
         self.stats_bar = tk.Frame(self.root, bg=BG)
         self.stat_values = {}
         for key, label in (("total", "参考文献"), ("errors", "错误"), ("warns", "警告")):
-            cell = tk.Frame(self.stats_bar, bg=RAISE, highlightthickness=1, highlightbackground=LINE)
-            cell.pack(side="left", fill="x", expand=True, padx=(0, 8 if key != "warns" else 0))
-            value = tk.Label(
-                cell, text="0", font=(self._mono, 15, "bold"), bg=RAISE, fg=TEXT
+            cell = tk.Frame(
+                self.stats_bar, bg=RAISE, highlightthickness=1, highlightbackground=LINE
             )
+            cell.pack(side="left", fill="x", expand=True, padx=(0, 8 if key != "warns" else 0))
+            value = tk.Label(cell, text="0", font=(self._mono, 15, "bold"), bg=RAISE, fg=TEXT)
             value.pack(side="left", padx=(12, 7), pady=7)
             tk.Label(cell, text=label, font=(self._ui, 8), bg=RAISE, fg=MUTED).pack(side="left")
             self.stat_values[key] = value
@@ -533,9 +542,9 @@ class App:
         bar = self._tk.Frame(self.root, bg=BG)
         self.toolbar = bar
         bar.pack(fill="x", padx=26, pady=(6, 8))
-        self._tk.Label(
-            bar, text="检查报告", font=(self._ui, 10, "bold"), bg=BG, fg=TEXT
-        ).pack(side="left", padx=(0, 14))
+        self._tk.Label(bar, text="检查报告", font=(self._ui, 10, "bold"), bg=BG, fg=TEXT).pack(
+            side="left", padx=(0, 14)
+        )
         self.btn_copy = self._button(bar, "复制报告", self.copy_report, kind="ghost")
         self.btn_md = self._button(bar, "导出 Markdown", self.export_md, kind="ghost")
         self.btn_fix = self._button(bar, "生成修正后列表", self.generate_fix, kind="warn")
@@ -690,6 +699,7 @@ class App:
             self.done.pack(fill="x", padx=20, pady=13)
 
     def _clear_result_views(self):
+        self._entry_snapshot = ()
         self._text_cache = ""
         self._md_cache = None
         self._fix_cache = ""
@@ -704,9 +714,7 @@ class App:
     def _show_report_panel(self):
         self.fix_panel.pack_forget()
         self.report_box.pack_forget()
-        self.report_box.pack(
-            fill="both", expand=True, padx=26, pady=(0, 4), after=self.toolbar
-        )
+        self.report_box.pack(fill="both", expand=True, padx=26, pady=(0, 4), after=self.toolbar)
 
     def check(self, path: str, display_name: str | None = None):
         source = Path(path)
@@ -761,21 +769,23 @@ class App:
                 "errors": report.error_count,
                 "warns": report.warn_count,
             }
+            entries = tuple(entry.text for entry in report.entries)
             self.root.after(
                 0,
                 lambda: self._finish(
-                    job_id, path, display_name, text, md, summary, color, found, stats
+                    job_id, path, display_name, text, md, summary, color, found, stats, entries
                 ),
             )
         except Exception as exc:  # 解析失败等  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             detail = str(exc) or exc.__class__.__name__
             self.root.after(0, lambda: self._finish_error(job_id, detail))
 
-    def _finish(self, job_id, path, display_name, text, md, summary, color, found, stats):
+    def _finish(self, job_id, path, display_name, text, md, summary, color, found, stats, entries):
         if job_id != self._job_id or self._last_path != path:
             return
         self._text_cache = text
         self._md_cache = md
+        self._entry_snapshot = entries
 
         icon, result_label, result_color = _result_meta(found, stats["errors"], stats["warns"])
         self.done_name.configure(
@@ -787,9 +797,7 @@ class App:
 
         self._set_status(summary, color)
         if found:
-            self.stat_values["total"].configure(
-                text=str(stats["total"]), fg=self._color("TEXT")
-            )
+            self.stat_values["total"].configure(text=str(stats["total"]), fg=self._color("TEXT"))
             self.stat_values["errors"].configure(
                 text=str(stats["errors"]),
                 fg=self._color("ERR") if stats["errors"] else self._color("MUTED"),
@@ -831,7 +839,11 @@ class App:
         self._set_stage(1)
         self.report.configure(state="normal")
         self.report.delete("1.0", "end")
-        self.report.insert("end", f"无法读取这份文档。\n\n{detail}\n\n请确认文件未损坏且不是旧版 .doc 格式。", ("err",))
+        self.report.insert(
+            "end",
+            f"无法读取这份文档。\n\n{detail}\n\n请确认文件未损坏且不是旧版 .doc 格式。",
+            ("err",),
+        )
         self.report.configure(state="disabled")
         self._set_status("检查失败，请选择另一份 .docx 文件", ERR)
 
@@ -841,22 +853,21 @@ class App:
     # ---------- 修正列表 ----------
 
     def generate_fix(self):
-        if not self._last_path:
+        if not self._entry_snapshot:
             return
         self._set_enabled(self.btn_fix, False)
         self._set_stage(3, completed=2)
         self._set_status("正在生成修正后列表 …", ACCENT)
-        path = self._last_path
         job_id = self._job_id
-        threading.Thread(target=self._fix_work, args=(path, job_id), daemon=True).start()
+        threading.Thread(
+            target=self._fix_work, args=(self._entry_snapshot, job_id), daemon=True
+        ).start()
 
-    def _fix_work(self, path: str, job_id: int):
+    def _fix_work(self, entries: tuple[str, ...], job_id: int):
         try:
-            from .cli import analyze
             from .fixer import fix_entries
 
-            report = analyze(Path(path))
-            result = fix_entries([e.text for e in report.entries])
+            result = fix_entries(list(entries))
             lines = result["lines"]
             s = result["summary"]
             header = (
@@ -877,17 +888,13 @@ class App:
                 )
             self.root.after(
                 0,
-                lambda: self._finish_fix(
-                    job_id, fix_display, header, body, len(manual_lines)
-                ),
+                lambda: self._finish_fix(job_id, fix_display, header, body, len(manual_lines)),
             )
         except Exception as exc:  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             detail = str(exc) or exc.__class__.__name__
             self.root.after(0, lambda: self._finish_fix_error(job_id, detail))
 
-    def _finish_fix(
-        self, job_id: int, fix_display: str, header: str, body: str, n_manual: int
-    ):
+    def _finish_fix(self, job_id: int, fix_display: str, header: str, body: str, n_manual: int):
         if job_id != self._job_id:
             return
         self._fix_cache = body
@@ -927,6 +934,14 @@ class App:
 
     # ---------- 导出 ----------
 
+    def _save_export(self, target: str, content: str):
+        try:
+            Path(target).write_text(content, encoding="utf-8")
+        except OSError as exc:
+            self._set_status(f"导出失败，请选择其他保存位置或关闭占用文件的程序：{exc}", ERR)
+            return
+        self._set_status(f"已导出：{target}", OK)
+
     def copy_report(self):
         content = self._text_cache
         if not content:
@@ -953,8 +968,7 @@ class App:
         )
         if not target:
             return
-        Path(target).write_text(self._md_cache, encoding="utf-8")
-        self._set_status(f"已导出：{target}", OK)
+        self._save_export(target, self._md_cache)
 
     def export_fix_txt(self):
         if not self._fix_cache:
@@ -967,15 +981,14 @@ class App:
         )
         if not target:
             return
-        Path(target).write_text(self._fix_cache, encoding="utf-8")
-        self._set_status(f"已导出：{target}", OK)
+        self._save_export(target, self._fix_cache)
 
     def run(self) -> int:
         self.root.mainloop()
         return 0
 
 
-def run_gui() -> int:
+def run_gui(initial_path: Path | None = None) -> int:
     """入口：返回进程退出码。"""
     if not _supports_tk():
         print(
@@ -994,4 +1007,6 @@ def run_gui() -> int:
     except Exception as exc:  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
         print(f"无法打开图形界面：{exc}\n可改用命令行：thesislint 论文.docx", file=sys.stderr)
         return 2
+    if initial_path is not None:
+        app.root.after(0, lambda: app.check(str(initial_path)))
     return app.run()
