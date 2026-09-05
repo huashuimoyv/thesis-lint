@@ -104,6 +104,11 @@ class TestUsageErrors:
         p.write_bytes(b"%PDF-1.4")
         assert main([str(p)]) == 2
 
-    def test_no_section_returns_zero(self, tmp_path):
-        path = _make_docx(tmp_path / "nosec.docx", ["只有正文"], heading="绪论")
-        assert main([str(path)]) == 0
+    @pytest.mark.parametrize("heading", ["绪论", "参考文献"])
+    @pytest.mark.parametrize("fmt", ["text", "md", "json"])
+    def test_uncheckable_document_returns_two(self, tmp_path, capsys, heading, fmt):
+        path = _make_docx(tmp_path / "empty.docx", [], heading=heading)
+        assert main([str(path), "--format", fmt]) == 2
+        output = capsys.readouterr().out
+        assert "未找到" in output or "未提取到" in output
+        assert "0 条通过" not in output

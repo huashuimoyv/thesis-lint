@@ -1,5 +1,6 @@
 """桌面工作流：文件传递、报告快照、过期回调与导出失败。"""
 
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -7,6 +8,49 @@ import pytest
 from docx import Document
 
 from thesislint import cli, gui
+
+
+def test_make_root_uses_supported_drag_and_drop_api(monkeypatch):
+    registered = []
+    root = SimpleNamespace(
+        drop_target_register=lambda value: registered.append(value),
+        dnd_bind=lambda event, callback: registered.append((event, callback)),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "tkinterdnd2",
+        SimpleNamespace(
+            DND_FILES="DND_Files",
+            TkinterDnD=SimpleNamespace(Tk=lambda: root),
+        ),
+    )
+    app = gui.App.__new__(gui.App)
+    fallback = object()
+    assert app._make_root(SimpleNamespace(Tk=lambda: fallback)) is root
+    assert registered == ["DND_Files", ("<<Drop>>", app._on_drop)]
+
+
+def test_make_root_still_works_when_drag_library_is_unavailable(monkeypatch):
+    monkeypatch.setitem(sys.modules, "tkinterdnd2", None)
+    root = object()
+    app = gui.App.__new__(gui.App)
+    assert app._make_root(SimpleNamespace(Tk=lambda: root)) is root
+
+
+def test_empty_document_is_not_shown_as_passed(tmp_path):
+    path = tmp_path / "empty.docx"
+    doc = Document()
+    doc.add_heading("参考文献", level=1)
+    doc.save(path)
+    app = gui.App.__new__(gui.App)
+    callbacks = []
+    finished = []
+    app.root = SimpleNamespace(after=lambda delay, callback: callbacks.append(callback))
+    app._finish = lambda *args: finished.append(args)
+    app._work(str(path), path.name, 1)
+    callbacks.pop(0)()
+    assert "未提取到" in finished[0][5]
+    assert finished[0][6] != gui.OK
 
 
 @pytest.mark.parametrize("args", [[], ["含空格的 论文.docx"]])

@@ -105,6 +105,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(build_text_report(report))
 
+    if report.unavailable_reason:
+        return 2
     has_error = any(i.level == ERROR for i in report.section_issues) or report.error_count > 0
     return 1 if (has_error or (args.strict and report.warn_count > 0)) else 0
 

@@ -92,5 +92,12 @@ class TestEdgeCases:
 
     def test_empty_report(self):
         r = Report(source="x.docx", found_section=True)
-        assert "0 条通过" in build_text_report(r)
-        assert '"entries": []' in build_json_report(r)
+        assert "未提取到" in build_text_report(r)
+        assert "未提取到" in build_markdown_report(r)
+        assert "0 条通过" not in build_text_report(r)
+        data = json.loads(build_json_report(r))
+        assert data["entries"] == []
+        assert "未提取到" in data["unavailable_reason"]
+
+    def test_checkable_report_has_no_unavailable_reason(self):
+        assert json.loads(build_json_report(_sample_report()))["unavailable_reason"] is None

@@ -49,10 +49,11 @@ class _FakeWidget:
 
 class TestGuiPureHelpers:
     def test_result_meta_reflects_outcome(self):
-        assert gui._result_meta(True, 0, 0) == ("✓", "全部通过", gui.OK)
-        assert gui._result_meta(True, 2, 0) == ("×", "发现 2 个错误", gui.ERR)
-        assert gui._result_meta(True, 0, 3) == ("!", "发现 3 个警告", gui.WARN)
-        assert gui._result_meta(False, 0, 0) == ("—", "未找到参考文献章节", gui.ERR)
+        assert gui._result_meta(True, 0, 0, 1) == ("✓", "全部通过", gui.OK)
+        assert gui._result_meta(True, 2, 0, 1) == ("×", "发现 2 个错误", gui.ERR)
+        assert gui._result_meta(True, 0, 3, 1) == ("!", "发现 3 个警告", gui.WARN)
+        assert gui._result_meta(False, 0, 0, 0) == ("—", "未找到参考文献章节", gui.ERR)
+        assert gui._result_meta(True, 0, 0, 0) == ("—", "未提取到参考文献条目", gui.WARN)
 
     def test_drop_paths_use_tcl_list_parser(self):
         paths = gui._split_drop_paths(

@@ -23,11 +23,14 @@ thesis-lint 便携版（Windows x64，版本号见窗口顶部）
        thesislint.exe 论文.docx --format json    JSON 格式报告
        thesislint.exe 论文.docx --strict         有警告时也返回失败码
 
+退出码：0=完成检查且无错误；1=发现错误；2=文件、用法有误或没有可检查的参考文献。
+
 【说明】
 - 首次运行启动约需 2~3 秒（单文件自解压），属正常现象
 - 程序未做代码签名；若系统提示，请先确认来自官方 Release 并核对 SHA256，
   再自行决定是否运行，不要关闭系统安全防护
 - 检查结果仅供参考，最终格式认定以学校要求为准
+- 当前仅提取标题后的普通段落文本；若文献位于表格或图片中，会提示未完成检查
 
 项目主页与源码：https://github.com/huashuimoyv/thesis-lint
 问题反馈：https://github.com/huashuimoyv/thesis-lint/issues

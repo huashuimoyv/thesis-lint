@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "thesis-lint"
-version = "0.6.1"
+version = "0.6.2"
 description = "毕业论文「国标体检」工具 —— 检查 Word 论文的参考文献格式是否符合 GB/T 7714-2025 / Thesis checker for GB/T 7714 references in Word documents"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -34,9 +34,8 @@ packages = ["src/thesislint"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# 门槛 54%：gui.py（376 语句、19%）是纯 UI 胶水，刻意不测而拖低总数；
-# 核心逻辑 checker/fixer/report/extractor/patterns 均 ≥96%。
-# 待 gui 抽出纯逻辑函数后逐步上调。
+# 门槛 54% 是早期桌面 UI 尚无真实窗口测试时设置的兼容基线；
+# 核心逻辑与关键桌面工作流已有回归覆盖，后续结合各 Python 版本的 CI 结果逐步上调。
 addopts = "--cov=thesislint --cov-report=term-missing --cov-fail-under=54"
 
 [tool.ruff]

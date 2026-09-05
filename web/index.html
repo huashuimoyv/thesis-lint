@@ -449,6 +449,7 @@ def web_check(filename: str) -> str:
         "stats": {"total": len(r.entries), "errors": r.error_count, "warns": r.warn_count,
                   "passed": len(r.entries) - sum(1 for e in r.entries if e.issues)},
         "found": r.found_section,
+        "unavailable_reason": r.unavailable_reason,
     }
     return json.dumps(data, ensure_ascii=False)
 
@@ -487,6 +488,10 @@ def web_fix(filename: str) -> str:
   let busy = false;
   let lastFilename = null;
   let fixData = "";
+  let reportText = "";
+  let reportMarkdown = "";
+  let hasReport = false;
+  let canFix = false;
 
   async function checkFile(file) {
     if (busy) return;
@@ -504,6 +509,7 @@ def web_fix(filename: str) -> str:
       py.FS.writeFile(file.name, buf);
       await present(py, file.name);
     } catch (err) {
+      lastFilename = null;
       setStage("❌ 检查失败：" + (err.message || err), false);
       console.error(err);
     } finally {
@@ -522,6 +528,7 @@ def web_fix(filename: str) -> str:
       setStage("正在生成并检查示例论文 …");
       await present(py, lastFilename, "web_demo");
     } catch (err) {
+      lastFilename = null;
       setStage("❌ 检查失败：" + (err.message || err), false);
       console.error(err);
     } finally {
@@ -532,7 +539,16 @@ def web_fix(filename: str) -> str:
 
   function beginWork() {
     document.body.classList.remove("has-result");
+    hasReport = false;
+    canFix = false;
+    reportText = "";
+    reportMarkdown = "";
+    fixData = "";
+    report.textContent = "";
+    report.style.display = "none";
+    $("stats").style.display = "none";
     $("fixPanel").style.display = "none";
+    setButtons(false);
     drop.classList.add("busy");
   }
 
@@ -540,19 +556,24 @@ def web_fix(filename: str) -> str:
     const jsonStr = await py.runPythonAsync(`${fn}(${JSON.stringify(filename)})`);
     const data = JSON.parse(jsonStr);
     drop.classList.remove("busy");
-    $("doneName").textContent = "✓ " + (fn === "web_demo" ? "示例论文" : filename);
+    $("doneName").textContent = (data.unavailable_reason ? "— " : "✓ ") +
+      (fn === "web_demo" ? "示例论文" : filename);
     render(data);
     setStage("", false);
   }
 
   function render(data) {
     document.body.classList.add("has-result");
-    if (!data.found) {
+    reportText = data.text;
+    reportMarkdown = data.markdown;
+    hasReport = true;
+    canFix = data.found && data.stats.total > 0;
+    if (data.unavailable_reason) {
       report.style.display = "block";
       report.textContent = data.text;
       $("stats").style.display = "none";
       $("fixPanel").style.display = "none";
-      $("btnFix").disabled = true;
+      setButtons(true);
       return;
     }
     $("stPass").innerHTML = `<b>${data.stats.passed}</b>条通过`;
@@ -569,11 +590,8 @@ def web_fix(filename: str) -> str:
       .replace(/\[WARN \]/g, `<span class="w">[WARN ]</span>`);
     report.innerHTML = html;
     report.style.display = "block";
-    $("btnCopy").disabled = false;
-    $("btnMd").disabled = false;
-    $("btnMd").dataset.md = data.markdown;
-    $("btnFix").disabled = data.stats.total === 0;
     $("fixPanel").style.display = "none";
+    setButtons(true);
   }
 
   /* ---------- 自动修正 ---------- */
@@ -606,12 +624,19 @@ def web_fix(filename: str) -> str:
     const manual = data.entries.filter(e => e.unresolved.length > 0);
     const m = $("fixManual");
     if (manual.length) {
-      m.innerHTML = "<b>以下条目无法全自动修正，请人工处理：</b><br>" +
-        manual.map(e =>
-          `· 第 ${e.index} 条（${e.original.slice(0, 40)}…）：${e.unresolved.join("；")}`
-        ).join("<br>");
+      m.replaceChildren();
+      const heading = document.createElement("b");
+      heading.textContent = "以下条目无法全自动修正，请人工处理：";
+      m.append(heading, document.createElement("br"));
+      manual.forEach((entry, index) => {
+        m.append(document.createTextNode(
+          `· 第 ${entry.index} 条（${entry.original.slice(0, 40)}…）：${entry.unresolved.join("；")}`
+        ));
+        if (index < manual.length - 1) m.append(document.createElement("br"));
+      });
       m.style.display = "block";
     } else {
+      m.replaceChildren();
       m.style.display = "none";
     }
     fixData = data.lines.join("\n");
@@ -622,12 +647,9 @@ def web_fix(filename: str) -> str:
   function setButtons(on) {
     drop.classList.toggle("busy", busy);
     $("btnDemo").disabled = !(on && enginePromise);
-    $("btnFix").disabled = !(on && lastFilename) ||
-      (report.style.display !== "none" && report.textContent.includes("未找到参考文献章节"));
-    if (on && report.style.display !== "none" && !report.textContent.includes("未找到")) {
-      $("btnCopy").disabled = false;
-      $("btnMd").disabled = false;
-    }
+    $("btnFix").disabled = !(on && lastFilename && canFix);
+    $("btnCopy").disabled = !(on && hasReport);
+    $("btnMd").disabled = !(on && hasReport);
   }
 
   /* ---------- 事件绑定 ---------- */
@@ -654,6 +676,19 @@ def web_fix(filename: str) -> str:
 
   $("btnDemo").addEventListener("click", e => { e.stopPropagation(); checkDemo(); });
   $("btnFix").addEventListener("click", generateFix);
+  $("btnCopy").addEventListener("click", () => {
+    navigator.clipboard.writeText(reportText)
+      .then(() => setStage("✅ 体检报告已复制", false))
+      .catch(() => setStage("复制失败，请手动选择报告文本", false));
+  });
+  $("btnMd").addEventListener("click", () => {
+    const blob = new Blob([reportMarkdown], { type: "text/markdown;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "参考文献体检报告.md";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
   $("btnFixCopy").addEventListener("click", () => {
     navigator.clipboard.writeText(fixData)
       .then(() => setStage("✅ 修正后列表已复制，去 Word 里粘贴吧", false))

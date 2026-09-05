@@ -131,10 +131,12 @@ _DEMO_ENTRIES = [
 ]
 
 
-def _result_meta(found: bool, errors: int, warns: int) -> tuple[str, str, str]:
+def _result_meta(found: bool, errors: int, warns: int, total: int) -> tuple[str, str, str]:
     """返回结果条使用的（图标、说明、颜色）。"""
     if not found:
         return "—", "未找到参考文献章节", ERR
+    if not total:
+        return "—", "未提取到参考文献条目", WARN
     if errors:
         return "×", f"发现 {errors} 个错误", ERR
     if warns:
@@ -214,9 +216,9 @@ class App:
     def _make_root(self, tk):
         """优先 tkinterdnd2 的 Tk 获得整窗拖拽；失败退回普通 Tk。"""
         try:
-            from tkinterdnd2 import DND_FILES, TkinterDnTk  # type: ignore
+            from tkinterdnd2 import DND_FILES, TkinterDnD
 
-            root = TkinterDnTk()
+            root = TkinterDnD.Tk()
             root.drop_target_register(DND_FILES)
             root.dnd_bind("<<Drop>>", self._on_drop)
             return root
@@ -758,12 +760,12 @@ class App:
             text = build_text_report(report)
             md = build_markdown_report(report)
             found = report.found_section
-            if found:
+            if report.unavailable_reason:
+                summary = report.unavailable_reason
+                color = WARN if found else ERR
+            else:
                 summary = f"完成：{report.error_count} 个错误，{report.warn_count} 个警告"
                 color = ERR if report.error_count else (WARN if report.warn_count else OK)
-            else:
-                summary = "未找到参考文献章节，请检查章节标题"
-                color = ERR
             stats = {
                 "total": len(report.entries),
                 "errors": report.error_count,
@@ -787,7 +789,9 @@ class App:
         self._md_cache = md
         self._entry_snapshot = entries
 
-        icon, result_label, result_color = _result_meta(found, stats["errors"], stats["warns"])
+        icon, result_label, result_color = _result_meta(
+            found, stats["errors"], stats["warns"], stats["total"]
+        )
         self.done_name.configure(
             text=f"{icon}  {display_name} · {result_label}",
             fg=self._resolve_color(result_color),

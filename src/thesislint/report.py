@@ -30,6 +30,18 @@ class Report:
     section_issues: list = field(default_factory=list)
 
     @property
+    def unavailable_reason(self) -> str | None:
+        """未完成检查的原因；不把提取失败算作文献格式错误。"""
+        if not self.found_section:
+            return "未完成检查：未找到参考文献章节。请确认章节标题与检查关键词一致。"
+        if not self.entries:
+            return (
+                "未完成检查：已找到参考文献章节，但未提取到可检查的条目。"
+                "请确认文献是标题后的普通段落文本；表格或图片中的文献暂不支持。"
+            )
+        return None
+
+    @property
     def error_count(self) -> int:
         return sum(e.errors for e in self.entries) + sum(
             1 for i in self.section_issues if i.level == "ERROR"
@@ -44,9 +56,8 @@ class Report:
 
 def build_text_report(report: Report) -> str:
     lines: list[str] = []
-    if not report.found_section:
-        lines.append("未找到参考文献章节。请确认文档中有“参考文献”标题。")
-        return "\n".join(lines)
+    if report.unavailable_reason:
+        return report.unavailable_reason
 
     lines.append(f"{report.source} —— 参考文献共 {len(report.entries)} 条")
     lines.append("")
@@ -74,11 +85,8 @@ def build_text_report(report: Report) -> str:
 
 
 def build_markdown_report(report: Report) -> str:
-    if not report.found_section:
-        return (
-            f"# 参考文献体检报告：{report.source}\n\n"
-            "未找到参考文献章节。请确认文档中有“参考文献”标题。\n"
-        )
+    if report.unavailable_reason:
+        return f"# 参考文献体检报告：{report.source}\n\n{report.unavailable_reason}\n"
 
     rows = ["| 条目 | 行号 | 级别 | 问题 |", "|---|---|---|---|"]
     for entry in report.entries:
@@ -103,6 +111,7 @@ def build_json_report(report: Report) -> str:
     data = {
         "source": report.source,
         "found_section": report.found_section,
+        "unavailable_reason": report.unavailable_reason,
         "error_count": report.error_count,
         "warn_count": report.warn_count,
         "entries": [

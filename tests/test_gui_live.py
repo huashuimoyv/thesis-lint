@@ -32,6 +32,8 @@ def test_launch_analyze_fix_and_export(tmp_path, monkeypatch, theme):
     def create_app():
         app = real_app()
         app.root.withdraw()
+        assert hasattr(app.root, "drop_target_register")
+        assert hasattr(app.root, "dnd_bind")
         app._filedialog = SimpleNamespace(asksaveasfilename=lambda **kw: str(output))
 
         def callback_failed(_kind, error, _traceback):

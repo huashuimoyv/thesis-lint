@@ -48,6 +48,18 @@ jobs:
       - name: Build single-file executable
         run: pyinstaller --onefile --clean --noconfirm --name thesislint build/portable_entry.py
 
+      - name: Verify portable executable
+        shell: pwsh
+        run: |
+          & .\dist\thesislint.exe --help | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw "Portable executable smoke test failed with exit code $LASTEXITCODE"
+          }
+          $archive = pyi-archive_viewer -l .\dist\thesislint.exe
+          if (-not ($archive -match "tkinterdnd2\\tkdnd\\win-x64\\.*\.dll")) {
+            throw "Windows TkDnD runtime is missing from portable executable"
+          }
+
       - name: Package portable zip
         shell: bash
         run: |
@@ -78,15 +90,15 @@ jobs:
 
           ## 便携版说明
           - 免安装、无需 Python，Windows 10+ x64
-          - 解压后在命令行运行：\`thesislint.exe 你的论文.docx\`（详见包内「使用说明.txt」）
-          - 程序未签名，SmartScreen 提示时选择“仍要运行”即可
+          - 解压后双击 \`thesislint.exe\` 使用黑白双主题图形界面，也支持命令行
+          - 程序未签名；若系统提示，请先确认来自本仓库 Release 并核对 SHA256，再自行决定是否运行
 
           ## 校验
           \`\`\`
           ${SHA256} *${ZIPNAME}
           \`\`\`
 
-          完整变更与源码见 [CHANGELOG](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/main/README.md#roadmap)。
+          完整变更与源码见 [CHANGELOG](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)。
           EOF
 
       - name: Upload dry-run artifact
