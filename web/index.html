@@ -245,6 +245,20 @@
   #report .e { color: var(--err); font-weight: bold; }
   #report .w { color: var(--warn-hi); font-weight: bold; }
   #report .h { color: var(--ok-hi); }
+  #reportFilters {
+    display: none; width: 100%; max-width: 920px;
+    align-items: center; gap: 6px; margin-top: 14px;
+    color: var(--muted); font-size: .88em;
+  }
+  #reportFilters button { padding: 5px 11px; font-size: .95em; }
+  #reportFilters button[aria-pressed="true"] {
+    color: var(--accent); border-color: var(--accent); background: var(--raise);
+  }
+  #reportFilters a {
+    margin-left: auto; color: var(--muted); text-decoration: none;
+    border-bottom: 1px solid var(--line); padding: 4px 0;
+  }
+  #reportFilters a:hover { color: var(--accent); border-color: var(--accent); }
 
   /* ---------- 修正面板 ---------- */
   #fixPanel {
@@ -343,6 +357,14 @@
   <span class="stat ok" id="stPass"></span>
   <span class="stat err" id="stErr"></span>
   <span class="stat warn" id="stWarn"></span>
+</div>
+
+<div id="reportFilters" aria-label="报告筛选">
+  <span>报告索引</span>
+  <button type="button" data-report-filter="all" aria-pressed="true">全部</button>
+  <button type="button" data-report-filter="error" aria-pressed="false">错误</button>
+  <button type="button" data-report-filter="warn" aria-pressed="false">警告</button>
+  <a href="https://openstd.samr.gov.cn/bzgk/std/newGbInfo?hcno=C6CE52E55AC09B9C79A20AEA77CEDD14" target="_blank" rel="noopener">规则依据 ↗</a>
 </div>
 
 <div id="report"></div>
@@ -445,6 +467,8 @@ def web_check(filename: str) -> str:
     r = analyze(Path(filename))
     data = {
         "text": build_text_report(r),
+        "text_errors": build_text_report(r, level="ERROR"),
+        "text_warnings": build_text_report(r, level="WARN"),
         "markdown": build_markdown_report(r),
         "stats": {"total": len(r.entries), "errors": r.error_count, "warns": r.warn_count,
                   "passed": len(r.entries) - sum(1 for e in r.entries if e.issues)},
@@ -490,6 +514,8 @@ def web_fix(filename: str) -> str:
   let fixData = "";
   let reportText = "";
   let reportMarkdown = "";
+  let reportViews = { all: "", error: "", warn: "" };
+  let reportFilter = "all";
   let hasReport = false;
   let canFix = false;
 
@@ -543,10 +569,13 @@ def web_fix(filename: str) -> str:
     canFix = false;
     reportText = "";
     reportMarkdown = "";
+    reportViews = { all: "", error: "", warn: "" };
+    reportFilter = "all";
     fixData = "";
     report.textContent = "";
     report.style.display = "none";
     $("stats").style.display = "none";
+    $("reportFilters").style.display = "none";
     $("fixPanel").style.display = "none";
     setButtons(false);
     drop.classList.add("busy");
@@ -566,12 +595,15 @@ def web_fix(filename: str) -> str:
     document.body.classList.add("has-result");
     reportText = data.text;
     reportMarkdown = data.markdown;
+    reportViews = { all: data.text, error: data.text_errors, warn: data.text_warnings };
+    reportFilter = "all";
     hasReport = true;
     canFix = data.found && data.stats.total > 0;
     if (data.unavailable_reason) {
       report.style.display = "block";
       report.textContent = data.text;
       $("stats").style.display = "none";
+      $("reportFilters").style.display = "none";
       $("fixPanel").style.display = "none";
       setButtons(true);
       return;
@@ -583,15 +615,26 @@ def web_fix(filename: str) -> str:
     $("stErr").style.display = data.stats.errors ? "inline-block" : "none";
     $("stWarn").style.display = data.stats.warns ? "inline-block" : "none";
 
-    const html = data.text
+    $("reportFilters").style.display = "flex";
+    renderReport("all");
+    $("fixPanel").style.display = "none";
+    setButtons(true);
+  }
+
+  function renderReport(selected) {
+    reportFilter = selected;
+    const visibleText = reportViews[selected] || reportViews.all;
+    document.querySelectorAll("[data-report-filter]").forEach(button => {
+      button.setAttribute("aria-pressed", String(button.dataset.reportFilter === selected));
+    });
+    const html = visibleText
       .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
       .replace(/(体检结果：.*)/, `<span class="h">$1</span>`)
       .replace(/\[ERROR\]/g, `<span class="e">[ERROR]</span>`)
       .replace(/\[WARN \]/g, `<span class="w">[WARN ]</span>`);
     report.innerHTML = html;
     report.style.display = "block";
-    $("fixPanel").style.display = "none";
-    setButtons(true);
   }
 
   /* ---------- 自动修正 ---------- */
@@ -675,6 +718,9 @@ def web_fix(filename: str) -> str:
   });
 
   $("btnDemo").addEventListener("click", e => { e.stopPropagation(); checkDemo(); });
+  document.querySelectorAll("[data-report-filter]").forEach(button => {
+    button.addEventListener("click", () => renderReport(button.dataset.reportFilter));
+  });
   $("btnFix").addEventListener("click", generateFix);
   $("btnCopy").addEventListener("click", () => {
     navigator.clipboard.writeText(reportText)

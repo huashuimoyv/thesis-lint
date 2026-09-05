@@ -9,7 +9,7 @@
 
 - 本地路径：`C:\Users\Ameath\.zcode\workspace\default\thesis-lint`
 - 远端：`github.com/huashuimoyv/thesis-lint`（公开仓库，MIT）
-- 当前版本：v0.6.2（恢复桌面窗口拖拽并补齐便携包资源；未找到或空参考文献不再误报通过；网页版新增报告复制/下载及异常状态清理，保留深浅主题）
+- 当前版本：v0.7.0（支持正文/表格顺序提取；新增页码、DOI、纸质专著出版项提示与确定性页码修正；桌面/网页报告可筛选错误或警告并访问官方规则依据，保留黑白双主题）
 - 在线版：https://huashuimoyv.github.io/thesis-lint/ （Pyodide 跑同一套 Python 规则，纯前端不上传；
   测试钩子 URL 参数 ?autodemo=1&autofix=1 自动跑示例并生成修正列表）
 
@@ -25,10 +25,10 @@ src/thesislint/
                 #   测试钩子：THESISLINT_GUI_AUTOCLOSE_MS（自动关闭）、THESISLINT_GUI_AUTODEMO=1（自动跑
                 #   示例体检）、THESISLINT_GUI_AUTOFIX=1（体检后自动生成修正列表）。
                 #   拖拽依赖 tkinterdnd2（仅 win32 marker），失败自动降级为纯按钮模式。
-  extractor.py  # 定位"参考文献"章节，逐条提取（自动合并 Word 折行条目），保留 [n] 序号原文
+  extractor.py  # 按正文顺序遍历段落/表格，定位"参考文献"章节并逐条提取，保留 [n] 序号原文
+  parser.py     # 轻量字段解析：序号/类型/年份/网址/DOI/页码区间/专著出版项
   patterns.py   # 正则与全角字符映射的唯一事实来源（checker/fixer 共用，v0.5.0）
-  checker.py    # 11 条规则引擎，ERROR/WARN 两级：缺序号/类型标识/年份/网址、序号重复跳号(段落级)、
-                #   作者>3人未加",等"(认可 et al.)、西文姓名未缩写、全角标点、缺尾句点、/OL缺引用日期
+  checker.py    # 14 条规则引擎，ERROR/WARN 两级：既有结构/作者/标点规则，加页码、DOI、专著出版项提示
   fixer.py      # 自动修正引擎（v0.3.0）：只做确定性变换（全角→半角、补尾句点、补序号/重编号、
                 #   作者>3人截断加等——作者区=主体开头到[TAG]前，末段>40字符视为含标题则放弃截断）；
                 #   不确定的进 unresolved 让人工处理；修正后重跑 checker 统计剩余警告
@@ -77,14 +77,14 @@ git tag v0.1.1 && git push origin v0.1.1   # release.yml 自动：测试→PyIns
 
 1. **ERROR = 确定违反国标；WARN = 疑似/建议**。`--strict` 时 WARN 也算失败。新规则先想清楚放哪级
 2. 条目文本**保留完整原文**（含 `[n]` 前缀），序号解析是 checker 的职责（extractor 只管提取）
-3. 每条 Issue 带 code（E001-E004/W001-W006/S001-S002），新增规则继续编号并**必须带测试用例**
+3. 每条 Issue 带 code（E001-E004/W001-W009/S001-S002），新增规则继续编号并**必须带测试用例**
 4. CLI 输出**禁用 emoji**（目标用户多用老式 cmd，GBK 环境已踩过坑——启动时强制 UTF-8 stdio + errors=replace）
 5. 报告中的输出示例与 demo.svg 内容保持逐字一致
 
 ## Roadmap（按价值排序，尚未实现）
 
 0. ~~双击 GUI~~（v0.2.0 已完成）；~~网页版~~（已上线 Pyodide + GitHub Pages）
-1. 更多字段级规则：页码格式、出版地：出版社校验、DOI 规范
+1. ~~更多字段级规则：页码格式、出版地：出版社校验、DOI 规范~~（v0.7.0 已完成保守校验）
 2. 正文引用 `[1][2]` 与文献表交叉核对
 3. 图表编号连续性、公式编号检查
 4. 学校规则预设包 `rules/<学校>.json`（增长飞轮：每个毕业生有动力提交自己学校）

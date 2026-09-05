@@ -16,13 +16,13 @@ from pathlib import Path
 from docx import Document
 
 from .checker import ERROR, check_entries
-from .extractor import find_bibliography
+from .extractor import find_bibliography_in_document
 from .report import EntryResult, Report, build_json_report, build_markdown_report, build_text_report
 
 
 def analyze(path: Path, section_keyword: str = "参考文献") -> Report:
     doc = Document(str(path))
-    bib = find_bibliography(doc.paragraphs, section_keyword)
+    bib = find_bibliography_in_document(doc, section_keyword)
     per_entry, section_issues = check_entries(bib.entries) if bib.found else ([], [])
 
     report = Report(source=path.name, found_section=bib.found, section_issues=section_issues)

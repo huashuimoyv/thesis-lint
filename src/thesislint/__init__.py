@@ -3,10 +3,11 @@
 检查 Word (.docx) 论文的参考文献是否符合 GB/T 7714-2025。
 """
 
-__version__ = "0.6.2"
+__version__ = "0.7.0"
 
 from .checker import Issue, check_entries, check_entry
-from .extractor import find_bibliography
+from .extractor import find_bibliography, find_bibliography_in_document
+from .parser import parse_reference
 from .report import build_text_report
 
 __all__ = [
@@ -16,4 +17,6 @@ __all__ = [
     "check_entries",
     "check_entry",
     "find_bibliography",
+    "find_bibliography_in_document",
+    "parse_reference",
 ]

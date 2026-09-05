@@ -18,6 +18,11 @@ import sys
 import threading
 from pathlib import Path
 
+STANDARD_URL = (
+    "https://openstd.samr.gov.cn/bzgk/std/newGbInfo?"
+    "hcno=C6CE52E55AC09B9C79A20AEA77CEDD14"
+)
+
 # ---- 配色：深色「夜间自习室」+ 浅色「白纸校样」----
 DARK_THEME = {
     "BG": "#0b0e13",
@@ -168,6 +173,8 @@ class App:
         self._themed_buttons = []
         self._md_cache: str | None = None
         self._text_cache = ""
+        self._report_views = {"all": "", "error": "", "warn": ""}
+        self._report_filter = "all"
         self._fix_cache = ""
         self._last_path: str | None = None
         self._entry_snapshot: tuple[str, ...] = ()
@@ -362,6 +369,7 @@ class App:
         self._palette = new_palette
         for button, kind in self._themed_buttons:
             self._paint_button(button, kind)
+        self._paint_report_filters()
         for text in (self.report, self.fix_text):
             text.tag_configure("err", foreground=self._color("ERR"))
             text.tag_configure("warn", foreground=self._color("WARN"))
@@ -541,9 +549,11 @@ class App:
             self.stat_values[key] = value
 
     def _build_toolbar(self):
-        bar = self._tk.Frame(self.root, bg=BG)
-        self.toolbar = bar
-        bar.pack(fill="x", padx=26, pady=(6, 8))
+        outer = self._tk.Frame(self.root, bg=BG)
+        self.toolbar = outer
+        outer.pack(fill="x", padx=26, pady=(6, 8))
+        bar = self._tk.Frame(outer, bg=BG)
+        bar.pack(fill="x")
         self._tk.Label(bar, text="检查报告", font=(self._ui, 10, "bold"), bg=BG, fg=TEXT).pack(
             side="left", padx=(0, 14)
         )
@@ -553,6 +563,27 @@ class App:
         for b in (self.btn_copy, self.btn_md, self.btn_fix):
             b.pack(side="left", padx=(0, 8))
             self._set_enabled(b, False)
+
+        filter_bar = self._tk.Frame(outer, bg=BG)
+        filter_bar.pack(fill="x", pady=(8, 0))
+        self._tk.Label(
+            filter_bar, text="报告索引", font=(self._ui, 8), bg=BG, fg=MUTED
+        ).pack(side="left", padx=(0, 8))
+        self.report_filter_buttons = {}
+        for key, label in (("all", "全部"), ("error", "错误"), ("warn", "警告")):
+            button = self._button(
+                filter_bar,
+                label,
+                lambda selected=key: self._select_report_filter(selected),
+                kind="ghost",
+            )
+            button.configure(padx=9, pady=3)
+            button.pack(side="left", padx=(0, 5))
+            self._set_enabled(button, False)
+            self.report_filter_buttons[key] = button
+        self.btn_basis = self._button(filter_bar, "规则依据 ↗", self.open_rule_basis, kind="ghost")
+        self.btn_basis.configure(padx=9, pady=3)
+        self.btn_basis.pack(side="right")
 
     def _make_code_view(self, parent, height):
         tk = self._tk
@@ -703,6 +734,8 @@ class App:
     def _clear_result_views(self):
         self._entry_snapshot = ()
         self._text_cache = ""
+        self._report_views = {"all": "", "error": "", "warn": ""}
+        self._report_filter = "all"
         self._md_cache = None
         self._fix_cache = ""
         self.stats_bar.pack_forget()
@@ -712,6 +745,9 @@ class App:
         self.report.insert("end", "正在读取 Word 文档并定位参考文献…", ("note",))
         self.report.configure(state="disabled")
         self.btn_fix.configure(text="生成修正后列表")
+        for button in getattr(self, "report_filter_buttons", {}).values():
+            self._set_enabled(button, False)
+        self._paint_report_filters()
 
     def _show_report_panel(self):
         self.fix_panel.pack_forget()
@@ -758,6 +794,11 @@ class App:
 
             report = analyze(Path(path))
             text = build_text_report(report)
+            text_views = {
+                "all": text,
+                "error": build_text_report(report, level="ERROR"),
+                "warn": build_text_report(report, level="WARN"),
+            }
             md = build_markdown_report(report)
             found = report.found_section
             if report.unavailable_reason:
@@ -775,17 +816,42 @@ class App:
             self.root.after(
                 0,
                 lambda: self._finish(
-                    job_id, path, display_name, text, md, summary, color, found, stats, entries
+                    job_id,
+                    path,
+                    display_name,
+                    text,
+                    md,
+                    summary,
+                    color,
+                    found,
+                    stats,
+                    entries,
+                    text_views,
                 ),
             )
         except Exception as exc:  # 解析失败等  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             detail = str(exc) or exc.__class__.__name__
             self.root.after(0, lambda: self._finish_error(job_id, detail))
 
-    def _finish(self, job_id, path, display_name, text, md, summary, color, found, stats, entries):
+    def _finish(
+        self,
+        job_id,
+        path,
+        display_name,
+        text,
+        md,
+        summary,
+        color,
+        found,
+        stats,
+        entries,
+        text_views,
+    ):
         if job_id != self._job_id or self._last_path != path:
             return
         self._text_cache = text
+        self._report_views = text_views
+        self._report_filter = "all"
         self._md_cache = md
         self._entry_snapshot = entries
 
@@ -811,7 +877,22 @@ class App:
                 fg=self._color("WARN") if stats["warns"] else self._color("MUTED"),
             )
             self.stats_bar.pack(fill="x", padx=26, pady=(7, 2), before=self.toolbar)
-        # 报告（带色渲染）
+        self._render_report_text(text)
+        for button in getattr(self, "report_filter_buttons", {}).values():
+            self._set_enabled(button, True)
+        self._paint_report_filters()
+
+        if found and stats["total"] > 0:
+            self._set_enabled(self.btn_fix, True)
+        self._set_enabled(self.btn_copy, True)
+        self._set_enabled(self.btn_md, True)
+
+        if self._auto_fix_pending and found and stats["total"] > 0:
+            self._auto_fix_pending = False
+            self.root.after(200, self.generate_fix)
+
+    def _render_report_text(self, text: str):
+        """把报告写入文本区，并按问题级别上色。"""
         self.report.configure(state="normal")
         self.report.delete("1.0", "end")
         for line in text.splitlines(True):
@@ -826,14 +907,29 @@ class App:
             self.report.insert("end", line, tags)
         self.report.configure(state="disabled")
 
-        if found and stats["total"] > 0:
-            self._set_enabled(self.btn_fix, True)
-        self._set_enabled(self.btn_copy, True)
-        self._set_enabled(self.btn_md, True)
+    def _select_report_filter(self, selected: str):
+        text = getattr(self, "_report_views", {}).get(selected)
+        if not text:
+            return
+        self._report_filter = selected
+        self._render_report_text(text)
+        self._paint_report_filters()
 
-        if self._auto_fix_pending and found and stats["total"] > 0:
-            self._auto_fix_pending = False
-            self.root.after(200, self.generate_fix)
+    def _paint_report_filters(self):
+        for key, button in getattr(self, "report_filter_buttons", {}).items():
+            self._paint_button(button, "ghost")
+            if key == getattr(self, "_report_filter", "all"):
+                button.configure(
+                    bg=self._color("PAPER"),
+                    fg=self._color("ACCENT_HI"),
+                    highlightbackground=self._color("ACCENT"),
+                )
+
+    def open_rule_basis(self):
+        import webbrowser
+
+        if not webbrowser.open(STANDARD_URL):
+            self._set_status("无法打开规则依据，请检查默认浏览器设置", WARN)
 
     def _finish_error(self, job_id: int, detail: str):
         if job_id != self._job_id:

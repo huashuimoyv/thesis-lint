@@ -64,6 +64,10 @@ def test_launch_analyze_fix_and_export(tmp_path, monkeypatch, theme):
                 return
             assert len(app._entry_snapshot) == 2
             assert app._last_path == str(path)
+            app._select_report_filter("warn")
+            assert app._report_filter == "warn"
+            assert "[WARN ]" in app.report.get("1.0", "end")
+            assert app._text_cache == app._report_views["all"]
             doc.paragraphs[1].text = "[1] 张三. 后来修改[J]. 学报, 2025."
             doc.save(path)
             app.generate_fix()

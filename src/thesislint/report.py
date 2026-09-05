@@ -37,7 +37,7 @@ class Report:
         if not self.entries:
             return (
                 "未完成检查：已找到参考文献章节，但未提取到可检查的条目。"
-                "请确认文献是标题后的普通段落文本；表格或图片中的文献暂不支持。"
+                "请确认参考文献位于章节标题后的正文或表格中；图片中的文字暂不支持。"
             )
         return None
 
@@ -54,7 +54,10 @@ class Report:
         )
 
 
-def build_text_report(report: Report) -> str:
+def build_text_report(report: Report, level: str | None = None) -> str:
+    """构建文本报告；``level`` 可只显示 ERROR 或 WARN 明细。"""
+    if level not in (None, "ERROR", "WARN"):
+        raise ValueError("level must be None, 'ERROR', or 'WARN'")
     lines: list[str] = []
     if report.unavailable_reason:
         return report.unavailable_reason
@@ -63,17 +66,20 @@ def build_text_report(report: Report) -> str:
     lines.append("")
 
     for entry in report.entries:
-        if not entry.issues:
+        visible_issues = [issue for issue in entry.issues if level is None or issue.level == level]
+        if not visible_issues:
             continue
         lines.append(
             f"[{entry.index}]（第 {entry.line} 行）{entry.text[:60]}{'…' if len(entry.text) > 60 else ''}"
         )
-        for issue in entry.issues:
+        for issue in visible_issues:
             mark = "[ERROR]" if issue.level == "ERROR" else "[WARN ]"
             lines.append(f"    {mark} {issue.code}: {issue.message}")
         lines.append("")
 
     for issue in report.section_issues:
+        if level is not None and issue.level != level:
+            continue
         mark = "[ERROR]" if issue.level == "ERROR" else "[WARN ]"
         lines.append(f"{mark} {issue.code}: {issue.message}")
 

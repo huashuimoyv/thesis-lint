@@ -1,6 +1,6 @@
 """从 .docx 文档中定位并提取参考文献条目。
 
-只处理普通段落文本；参考文献段以标题（如“参考文献”）开始，
+按正文顺序处理普通段落与表格行；参考文献段以标题（如“参考文献”）开始，
 到下一个同级/更高级 Heading 或常见后继章节（致谢、附录等）为止。
 """
 
@@ -8,6 +8,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from types import SimpleNamespace
+
+from docx.oxml.table import CT_Tbl
+from docx.oxml.text.paragraph import CT_P
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 # 常见的中断章节标题，匹配到即认为参考文献部分结束
 _SECTION_STOP = re.compile(
@@ -18,6 +24,7 @@ _HEADING_HINT = re.compile(r"heading|标题", re.IGNORECASE)
 _HEADING_LEVEL = re.compile(r"(?:heading|标题)\s*([1-9])", re.IGNORECASE)
 _ENTRY_START = re.compile(r"^\[(\d+)\]\s*(.*)$")
 _ENTRY_BREAK = re.compile(r"[\r\n]+(?=[^\S\r\n]*\[\d+\])")
+_TABLE_HEADER = re.compile(r"^(?:序号|编号)\s*(?:参考文献|文献(?:名称|条目)?)$")
 
 
 @dataclass
@@ -121,3 +128,37 @@ def find_bibliography(paragraphs, section_keyword: str = "参考文献") -> Bibl
         result.entries.append(" ".join(current))
 
     return result
+
+
+def _iter_document_blocks(document):
+    """按 Word 正文顺序产出段落和表格行。"""
+    for child in document.element.body.iterchildren():
+        if isinstance(child, CT_P):
+            yield Paragraph(child, document)
+        elif isinstance(child, CT_Tbl):
+            table = Table(child, document)
+            for row in table.rows:
+                seen_cells: set[int] = set()
+                parts: list[str] = []
+                for cell in row.cells:
+                    cell_id = id(cell._tc)
+                    if cell_id in seen_cells:
+                        continue
+                    seen_cells.add(cell_id)
+                    if cell.text.strip():
+                        parts.append(cell.text.strip())
+                normalized = [" ".join(part.split()) for part in parts]
+                entry_cells = [part for part in normalized if _ENTRY_START.match(part)]
+                row_texts = entry_cells if len(entry_cells) > 1 else [" ".join(parts)]
+                for row_text in row_texts:
+                    if _TABLE_HEADER.fullmatch(" ".join(row_text.split())):
+                        continue
+                    yield SimpleNamespace(
+                        text=row_text,
+                        style=SimpleNamespace(name=""),
+                    )
+
+
+def find_bibliography_in_document(document, section_keyword: str = "参考文献") -> Bibliography:
+    """从 ``python-docx`` 文档正文和表格中提取参考文献。"""
+    return find_bibliography(_iter_document_blocks(document), section_keyword)

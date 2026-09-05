@@ -22,3 +22,15 @@ def test_report_state_is_cleared_before_new_check():
 def test_untrusted_reference_text_is_not_inserted_as_html():
     assert "m.append(document.createTextNode(" in HTML
     assert "manual.map" not in HTML
+
+
+def test_report_filters_are_connected_and_exports_stay_complete():
+    assert 'data-report-filter="error"' in HTML
+    assert 'data-report-filter="warn"' in HTML
+    assert 'button.addEventListener("click", () => renderReport' in HTML
+    assert "reportViews = { all: data.text, error: data.text_errors, warn: data.text_warnings }" in HTML
+    assert "navigator.clipboard.writeText(reportText)" in HTML
+
+
+def test_official_rule_basis_is_linked():
+    assert "openstd.samr.gov.cn/bzgk/std/newGbInfo" in HTML

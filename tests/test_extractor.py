@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 from thesislint.cli import analyze
-from thesislint.extractor import find_bibliography
+from thesislint.extractor import find_bibliography, find_bibliography_in_document
 
 
 def fake_paragraphs(*pairs):
@@ -119,6 +119,59 @@ class TestExtractor:
 
 
 class TestCliAnalyze:
+    def test_references_in_table_are_extracted_in_document_order(self, tmp_path):
+        from docx import Document
+
+        doc = Document()
+        doc.add_heading("参考文献", level=1)
+        table = doc.add_table(rows=2, cols=2)
+        table.cell(0, 0).text = "[1] 张三. 表格中的论文[J]."
+        table.cell(0, 1).text = "学报, 2024, 1(1): 1-9."
+        table.cell(1, 0).text = "[2] 李四. 表格中的专著[M]."
+        table.cell(1, 1).text = "北京: 出版社, 2020."
+        doc.add_heading("致谢", level=1)
+        path = tmp_path / "table-references.docx"
+        doc.save(path)
+
+        report = analyze(path)
+
+        assert [entry.text for entry in report.entries] == [
+            "[1] 张三. 表格中的论文[J]. 学报, 2024, 1(1): 1-9.",
+            "[2] 李四. 表格中的专著[M]. 北京: 出版社, 2020.",
+        ]
+        assert [entry.line for entry in report.entries] == [2, 3]
+
+    def test_heading_and_references_can_both_be_inside_table(self):
+        from docx import Document
+
+        doc = Document()
+        table = doc.add_table(rows=2, cols=1)
+        table.cell(0, 0).text = "参考文献"
+        table.cell(1, 0).text = "[1] 张三. 表格文献[J]. 学报, 2024, 1(1): 1-9."
+
+        bib = find_bibliography_in_document(doc)
+
+        assert bib.found
+        assert bib.entries == ["[1] 张三. 表格文献[J]. 学报, 2024, 1(1): 1-9."]
+
+    def test_table_header_is_ignored_and_two_reference_columns_are_split(self):
+        from docx import Document
+
+        doc = Document()
+        doc.add_heading("参考文献", level=1)
+        table = doc.add_table(rows=2, cols=2)
+        table.cell(0, 0).text = "序号"
+        table.cell(0, 1).text = "参考文献"
+        table.cell(1, 0).text = "[1] 张三. 文一[J]. 学报, 2024."
+        table.cell(1, 1).text = "[2] 李四. 文二[J]. 学报, 2023."
+
+        bib = find_bibliography_in_document(doc)
+
+        assert bib.entries == [
+            "[1] 张三. 文一[J]. 学报, 2024.",
+            "[2] 李四. 文二[J]. 学报, 2023.",
+        ]
+
     def test_duplicate_number_after_manual_break_is_reported(self, tmp_path):
         from docx import Document
 

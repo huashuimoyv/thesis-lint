@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "thesis-lint"
-version = "0.6.2"
+version = "0.7.0"
 description = "毕业论文「国标体检」工具 —— 检查 Word 论文的参考文献格式是否符合 GB/T 7714-2025 / Thesis checker for GB/T 7714 references in Word documents"
 readme = "README.md"
 license = { file = "LICENSE" }

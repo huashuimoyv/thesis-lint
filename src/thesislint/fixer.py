@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass, field
 
 from .checker import check_entry
+from .parser import PAGE_RANGE_RE, parse_reference
 from .patterns import (
     CITE_DATE_RE,
     FULLWIDTH_TRANS,
@@ -59,6 +60,15 @@ def fix_entry(text: str, new_index: int) -> EntryFix:
         work = translated
         fixes.append("全角标点改为半角")
 
+    def normalize_page_separator(match: re.Match[str]) -> str:
+        start, separator, end = match.groups()
+        return f": {start}-{end}" if separator != "-" else match.group(0)
+
+    normalized_pages = PAGE_RANGE_RE.sub(normalize_page_separator, work)
+    if normalized_pages != work:
+        work = normalized_pages
+        fixes.append("页码区间分隔符改为半角连字符")
+
     # 3. 尾部句点
     if not work.endswith("."):
         work = work.rstrip() + "."
@@ -89,6 +99,16 @@ def fix_entry(text: str, new_index: int) -> EntryFix:
             unresolved.append("电子资源缺少获取路径（网址）")
         if not CITE_DATE_RE.search(work):
             unresolved.append("电子资源建议补充引用日期 [YYYY-MM-DD]")
+
+    fields = parse_reference(work)
+    if fields.page_range and fields.page_range[0] > fields.page_range[1]:
+        unresolved.append("页码区间起止页疑似颠倒，请核对")
+    if fields.doi_hint and not fields.doi:
+        unresolved.append("DOI 格式疑似不完整，请核对")
+    if fields.base_tag == "M" and (not fields.tag or "/OL" not in fields.tag) and not (
+        fields.publication_place and fields.publisher
+    ):
+        unresolved.append("纸质专著缺少可识别的出版地或出版者，请补充")
 
     # 6. 修正后剩余的警告（如西文姓名未缩写等），如实提示
     remaining = [i for i in check_entry(work) if i.level == "WARN"]

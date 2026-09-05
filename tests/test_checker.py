@@ -91,6 +91,47 @@ class TestWarnings:
         codes = [i.code for i in check_entry(entry)]
         assert "W001" in codes
 
+    def test_reversed_page_range(self):
+        entry = "[1] 张三. 论文名称[J]. 学报, 2024, 1(1): 110-100."
+        issues = check_entry(entry)
+        assert any(i.code == "W007" and i.level == WARN for i in issues)
+
+    def test_nonstandard_page_range_separator(self):
+        entry = "[1] 张三. 论文名称[J]. 学报, 2024, 1(1): 100～110."
+        assert any(i.code == "W007" for i in check_entry(entry))
+
+    def test_valid_article_number_is_not_treated_as_bad_pages(self):
+        entry = "[1] 张三. 论文名称[J]. 学报, 2024, 12(2): e10345."
+        assert not any(i.code == "W007" for i in check_entry(entry))
+
+    def test_invalid_doi_format(self):
+        entry = "[1] 张三. 论文名称[J]. 学报, 2024. doi: 10.12/bad."
+        issues = check_entry(entry)
+        assert any(i.code == "W008" and i.level == WARN for i in issues)
+
+    def test_valid_doi_url(self):
+        entry = "[1] 张三. 论文名称[J]. 学报, 2024. https://doi.org/10.1000/xyz-123."
+        assert not any(i.code == "W008" for i in check_entry(entry))
+
+    def test_missing_doi_is_not_an_issue(self):
+        entry = "[1] 张三. 论文名称[J]. 学报, 2024, 1(1): 1-9."
+        assert not any(i.code == "W008" for i in check_entry(entry))
+
+    def test_decimal_version_number_is_not_treated_as_doi(self):
+        entry = "[1] 张三. Python 3.10 使用指南[M]. 北京: 出版社, 2024."
+        assert not any(i.code == "W008" for i in check_entry(entry))
+
+    def test_print_monograph_without_publication_item(self):
+        entry = "[1] 王五. 数据结构[M]. 2020."
+        assert any(i.code == "W009" for i in check_entry(entry))
+
+    def test_online_monograph_does_not_require_print_publication_item(self):
+        entry = (
+            "[1] 王五. 在线专著[M/OL]. 2020[2026-09-05]. "
+            "https://example.com/book."
+        )
+        assert not any(i.code == "W009" for i in check_entry(entry))
+
 
 class TestSectionRules:
     def test_duplicate_numbers(self):

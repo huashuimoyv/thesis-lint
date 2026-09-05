@@ -73,6 +73,16 @@ class TestSingleEntryFixes:
         assert r.remaining_warnings >= 1
         assert r.unresolved == []
 
+    def test_page_range_separator_is_normalized(self):
+        r = fix_entry("[1] 张三. 论文[J]. 学报, 2024, 1(1): 100～110.", 1)
+        assert r.fixed.endswith("100-110.")
+        assert any("页码区间" in f for f in r.fixes)
+
+    def test_reversed_page_range_is_left_for_manual_review(self):
+        r = fix_entry("[1] 张三. 论文[J]. 学报, 2024, 1(1): 110-100.", 1)
+        assert "110-100" in r.fixed
+        assert any("页码" in item for item in r.unresolved)
+
 
 class TestSectionFixes:
     def test_renumbering(self):

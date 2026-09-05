@@ -42,6 +42,16 @@ class TestSectionIssuesPresentInAllFormats:
     def test_text_has_section_issues(self):
         assert "S002" in build_text_report(_sample_report())
 
+    def test_text_can_filter_issue_level_without_changing_totals(self):
+        report = _sample_report()
+        report.entries[0].issues.extend(check_entries(["[1] 张三. 文一[J]. 学报, 2024"])[0][0])
+        only_errors = build_text_report(report, level="ERROR")
+        only_warnings = build_text_report(report, level="WARN")
+
+        assert "S002" in only_errors and "W006" not in only_errors
+        assert "W006" in only_warnings and "S002" not in only_warnings
+        assert "个错误" in only_errors and "个警告" in only_errors
+
     def test_markdown_has_section_issues(self):
         assert "S002" in build_markdown_report(_sample_report())
 

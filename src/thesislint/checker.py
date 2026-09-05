@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .parser import parse_reference
 from .patterns import (
     CITE_DATE_RE,
     FULLWIDTH_PUNCT,
@@ -64,6 +65,7 @@ def check_entry(raw: str) -> list[Issue]:
         issues.append(Issue(ERROR, "E001", "条目应以序号开头，如 “ [1] ”"))
         return issues
     body = m.group(2).strip()
+    fields = parse_reference(text)
 
     tag = None
     tag_m = TAG_RE.search(body)
@@ -105,6 +107,19 @@ def check_entry(raw: str) -> list[Issue]:
 
     if not text.endswith("."):
         issues.append(Issue(WARN, "W006", "条目未以句点“.”结尾"))
+
+    if fields.page_separator and fields.page_separator != "-":
+        issues.append(Issue(WARN, "W007", "页码区间建议使用半角连字符“-”"))
+    elif fields.page_range and fields.page_range[0] > fields.page_range[1]:
+        issues.append(Issue(WARN, "W007", "页码区间的起止页疑似颠倒，请核对"))
+
+    if fields.doi_hint and not fields.doi:
+        issues.append(Issue(WARN, "W008", "DOI 格式疑似不完整，应形如 10.1234/abc"))
+
+    if fields.base_tag == "M" and not is_online and not (
+        fields.publication_place and fields.publisher
+    ):
+        issues.append(Issue(WARN, "W009", "纸质专著未识别到“出版地: 出版者, 年份”出版项"))
 
     return issues
 

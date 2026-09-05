@@ -96,6 +96,8 @@ class TestGuiPureHelpers:
         app._text_cache = "old"
         app._md_cache = "old"
         app._fix_cache = "old"
+        app._report_views = {"all": "old"}
+        app._report_filter = "warn"
         app.stats_bar = _FakeWidget(mapped=True)
         app.fix_panel = _FakeWidget(mapped=True)
         app.report_box = _FakeWidget()
@@ -108,10 +110,32 @@ class TestGuiPureHelpers:
         assert app._text_cache == ""
         assert app._md_cache is None
         assert app._fix_cache == ""
+        assert app._report_views == {"all": "", "error": "", "warn": ""}
+        assert app._report_filter == "all"
         assert not app.stats_bar.mapped and not app.fix_panel.mapped
         assert app.report.config["state"] == "disabled"
         assert app.btn_fix.config["text"] == "生成修正后列表"
         assert any(call[0] == "insert" for call in app.report.calls)
+
+    def test_report_filter_changes_visible_text_but_keeps_full_copy_cache(self):
+        app = gui.App.__new__(gui.App)
+        app._palette = gui.DARK_THEME
+        app._text_cache = "完整报告"
+        app._report_views = {"all": "完整报告", "error": "仅错误", "warn": "仅警告"}
+        app._report_filter = "all"
+        app.report = _FakeWidget()
+        app.report_filter_buttons = {
+            "all": _FakeWidget(),
+            "error": _FakeWidget(),
+            "warn": _FakeWidget(),
+        }
+
+        app._select_report_filter("error")
+
+        inserted = "".join(call[1][1] for call in app.report.calls if call[0] == "insert")
+        assert inserted == "仅错误"
+        assert app._text_cache == "完整报告"
+        assert app._report_filter == "error"
 
     def test_escape_collapses_fix_panel_and_focuses_report(self):
         app = gui.App.__new__(gui.App)
