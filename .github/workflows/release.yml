@@ -56,7 +56,7 @@ jobs:
             throw "Portable executable smoke test failed with exit code $LASTEXITCODE"
           }
           $archive = pyi-archive_viewer -l .\dist\thesislint.exe
-          if (-not ($archive -match "tkinterdnd2\\tkdnd\\win-x64\\.*\.dll")) {
+          if (-not ($archive -match "tkinterdnd2.*win-x64(?:-tcl9)?.*\.dll")) {
             throw "Windows TkDnD runtime is missing from portable executable"
           }
 
