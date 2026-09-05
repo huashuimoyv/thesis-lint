@@ -13,12 +13,8 @@ from .patterns import NUM_RE, TAG_RE, URL_RE, YEAR_RE
 
 DOI_HINT_RE = re.compile(r"(?i)(?:\bdoi\s*:|https?://doi\.org/|\b10\.\d{2,9}/)")
 DOI_RE = re.compile(r"(?i)\b10\.\d{4,9}/[-._;()/:A-Z0-9]+")
-PAGE_RANGE_RE = re.compile(
-    r":\s*([A-Za-z]?\d+)\s*([-~～–—])\s*([A-Za-z]?\d+)(?=\s*[.,;)]|\s*$)"
-)
-PUBLICATION_RE = re.compile(
-    r"(?:^|[.]\s*)([^,.;:]{1,40})\s*:\s*([^,.;]{1,80})\s*,\s*$"
-)
+PAGE_RANGE_RE = re.compile(r":\s*([A-Za-z]?\d+)\s*([-~～–—])\s*([A-Za-z]?\d+)(?=\s*[.,;)]|\s*$)")
+PUBLICATION_RE = re.compile(r"(?:^|[.]\s*)([^,.;:]{1,40})\s*:\s*([^,.;]{1,80})\s*,\s*$")
 
 
 @dataclass(frozen=True)
@@ -74,9 +70,7 @@ def parse_reference(raw: str) -> ReferenceFields:
         before_year = after_tag[: year_match.start()] if year_match else after_tag
         publication_match = PUBLICATION_RE.search(before_year)
         if publication_match:
-            publication_place, publisher = (
-                value.strip() for value in publication_match.groups()
-            )
+            publication_place, publisher = (value.strip() for value in publication_match.groups())
 
     return ReferenceFields(
         number=number,

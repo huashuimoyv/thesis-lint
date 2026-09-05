@@ -116,8 +116,10 @@ def check_entry(raw: str) -> list[Issue]:
     if fields.doi_hint and not fields.doi:
         issues.append(Issue(WARN, "W008", "DOI 格式疑似不完整，应形如 10.1234/abc"))
 
-    if fields.base_tag == "M" and not is_online and not (
-        fields.publication_place and fields.publisher
+    if (
+        fields.base_tag == "M"
+        and not is_online
+        and not (fields.publication_place and fields.publisher)
     ):
         issues.append(Issue(WARN, "W009", "纸质专著未识别到“出版地: 出版者, 年份”出版项"))
 

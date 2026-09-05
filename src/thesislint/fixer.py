@@ -105,8 +105,10 @@ def fix_entry(text: str, new_index: int) -> EntryFix:
         unresolved.append("页码区间起止页疑似颠倒，请核对")
     if fields.doi_hint and not fields.doi:
         unresolved.append("DOI 格式疑似不完整，请核对")
-    if fields.base_tag == "M" and (not fields.tag or "/OL" not in fields.tag) and not (
-        fields.publication_place and fields.publisher
+    if (
+        fields.base_tag == "M"
+        and (not fields.tag or "/OL" not in fields.tag)
+        and not (fields.publication_place and fields.publisher)
     ):
         unresolved.append("纸质专著缺少可识别的出版地或出版者，请补充")
 

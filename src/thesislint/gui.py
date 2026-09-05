@@ -19,8 +19,7 @@ import threading
 from pathlib import Path
 
 STANDARD_URL = (
-    "https://openstd.samr.gov.cn/bzgk/std/newGbInfo?"
-    "hcno=C6CE52E55AC09B9C79A20AEA77CEDD14"
+    "https://openstd.samr.gov.cn/bzgk/std/newGbInfo?hcno=C6CE52E55AC09B9C79A20AEA77CEDD14"
 )
 
 # ---- 配色：深色「夜间自习室」+ 浅色「白纸校样」----
@@ -566,9 +565,9 @@ class App:
 
         filter_bar = self._tk.Frame(outer, bg=BG)
         filter_bar.pack(fill="x", pady=(8, 0))
-        self._tk.Label(
-            filter_bar, text="报告索引", font=(self._ui, 8), bg=BG, fg=MUTED
-        ).pack(side="left", padx=(0, 8))
+        self._tk.Label(filter_bar, text="报告索引", font=(self._ui, 8), bg=BG, fg=MUTED).pack(
+            side="left", padx=(0, 8)
+        )
         self.report_filter_buttons = {}
         for key, label in (("all", "全部"), ("error", "错误"), ("warn", "警告")):
             button = self._button(

@@ -28,7 +28,10 @@ def test_report_filters_are_connected_and_exports_stay_complete():
     assert 'data-report-filter="error"' in HTML
     assert 'data-report-filter="warn"' in HTML
     assert 'button.addEventListener("click", () => renderReport' in HTML
-    assert "reportViews = { all: data.text, error: data.text_errors, warn: data.text_warnings }" in HTML
+    assert (
+        "reportViews = { all: data.text, error: data.text_errors, warn: data.text_warnings }"
+        in HTML
+    )
     assert "navigator.clipboard.writeText(reportText)" in HTML
 
 

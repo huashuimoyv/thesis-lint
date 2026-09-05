@@ -126,10 +126,7 @@ class TestWarnings:
         assert any(i.code == "W009" for i in check_entry(entry))
 
     def test_online_monograph_does_not_require_print_publication_item(self):
-        entry = (
-            "[1] 王五. 在线专著[M/OL]. 2020[2026-09-05]. "
-            "https://example.com/book."
-        )
+        entry = "[1] 王五. 在线专著[M/OL]. 2020[2026-09-05]. https://example.com/book."
         assert not any(i.code == "W009" for i in check_entry(entry))
 
 
