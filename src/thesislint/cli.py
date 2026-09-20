@@ -16,6 +16,7 @@ from pathlib import Path
 from docx import Document
 
 from .checker import ERROR, check_entries
+from .citations import check_citations
 from .extractor import find_bibliography_in_document
 from .report import EntryResult, Report, build_json_report, build_markdown_report, build_text_report
 
@@ -25,7 +26,12 @@ def analyze(path: Path, section_keyword: str = "参考文献") -> Report:
     bib = find_bibliography_in_document(doc, section_keyword)
     per_entry, section_issues = check_entries(bib.entries) if bib.found else ([], [])
 
-    report = Report(source=path.name, found_section=bib.found, section_issues=section_issues)
+    report = Report(
+        source=path.name,
+        found_section=bib.found,
+        section_issues=section_issues,
+        citations=check_citations(bib),
+    )
     for i, text in enumerate(bib.entries):
         report.entries.append(
             EntryResult(

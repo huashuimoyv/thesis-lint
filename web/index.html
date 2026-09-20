@@ -154,6 +154,7 @@
     50%      { box-shadow: 0 0 60px -14px var(--glow-b); }
   }
   #drop.over { border-color: var(--accent); border-style: solid; background-color: var(--drop-over-bg); }
+  #drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
   #drop.over .t-default { display: none; }
   #drop.over .t-over { display: block; color: var(--accent); }
   .t-over { display: none; }
@@ -213,7 +214,7 @@
   button.fixbtn { color: var(--fixbtn-text); border-color: var(--fixbtn-border); }
   button.fixbtn:hover:not(:disabled) { border-color: var(--warn); background: var(--fixbtn-hover-bg); }
 
-  #stage { width: 100%; max-width: 920px; color: var(--muted); font-size: .93em; min-height: 1.6em; padding: 8px 2px 0; }
+  #stage { width: 100%; max-width: 920px; color: var(--muted); font-size: .93em; min-height: 1.6em; padding: 8px 2px 0; overflow-wrap: anywhere; }
   #stage .dot { display: inline-block; animation: blink 1.2s infinite; margin-right: 8px; color: var(--accent); }
   @keyframes blink { 50% { opacity: .2; } }
 
@@ -321,7 +322,7 @@
   </nav>
 </header>
 
-<div id="drop" role="button" aria-label="上传论文">
+<div id="drop" role="button" aria-label="上传论文" tabindex="0" aria-disabled="false">
   <div class="hero-big">
     <h1 class="t-default">把论文拖进来，即刻体检</h1>
     <h1 class="t-over">松手，开始体检</h1>
@@ -329,6 +330,7 @@
       检查参考文献是否符合 <b>GB/T 7714-2025</b>
       <span class="dot">·</span>并可一键生成<b>修正后的列表</b>
     </div>
+    <div class="sub" style="margin-top:4px">支持正文数字引用与文献表核对，疑似问题提示人工复核</div>
     <div class="sub" style="margin-top:4px">
       文档仅在<b>浏览器本地</b>解析，不会上传到任何服务器
     </div>
@@ -377,7 +379,7 @@
   <div id="fixList"></div>
   <div id="fixManual"></div>
   <div class="fixcaveat">
-    ⚠︎ 已重新编号的列表请同步修改正文中的引用编号；粘贴回 Word 后建议再人工过一遍。
+    文档含正文时保留文献编号；正文引用请人工核对，粘贴回 Word 后重新体检。
   </div>
   <div id="fixActions">
     <button class="primary" id="btnFixCopy">📋 复制修正后全部条目</button>
@@ -401,7 +403,12 @@
   const rootEl = document.documentElement;
   const themeBtn = $("themeBtn");
   const mqLight = matchMedia("(prefers-color-scheme: light)");
-  let themeMode = localStorage.getItem(THEME_KEY) || "auto";
+  // 隐私设置或存储配额不应阻止页面启动或在本次会话中切换主题。
+  let themeMode = "auto";
+  try {
+    const savedTheme = localStorage.getItem(THEME_KEY);
+    if (["auto", "light", "dark"].includes(savedTheme)) themeMode = savedTheme;
+  } catch { /* 无法读取时跟随系统 */ }
 
   function applyTheme(mode) {
     themeMode = mode;
@@ -413,14 +420,22 @@
   }
   themeBtn.addEventListener("click", () => {
     themeMode = themeMode === "auto" ? "light" : themeMode === "light" ? "dark" : "auto";
-    localStorage.setItem(THEME_KEY, themeMode);
     applyTheme(themeMode);
+    try { localStorage.setItem(THEME_KEY, themeMode); }
+    catch { /* 无法持久化时仍保留本次会话的选择 */ }
   });
   mqLight.addEventListener("change", () => { if (themeMode === "auto") applyTheme("auto"); });
   applyTheme(themeMode);
 
   function setStage(msg, spin = true) {
-    stage.innerHTML = spin ? `<span class="dot">▶</span>${msg}` : msg;
+    stage.replaceChildren(document.createTextNode(String(msg)));
+    if (spin) {
+      const icon = document.createElement("span");
+      icon.className = "dot";
+      icon.textContent = "▶";
+      icon.setAttribute("aria-hidden", "true");
+      stage.prepend(icon);
+    }
   }
 
   /* ---------- Pyodide 引擎 ---------- */
@@ -463,7 +478,13 @@ from pathlib import Path
 from thesislint.cli import analyze
 from thesislint.report import build_json_report, build_text_report, build_markdown_report
 
+checked_report = None
+checked_filename = None
+
 def web_check(filename: str) -> str:
+    global checked_report, checked_filename
+    checked_report = None
+    checked_filename = None
     r = analyze(Path(filename))
     data = {
         "text": build_text_report(r),
@@ -475,11 +496,16 @@ def web_check(filename: str) -> str:
         "found": r.found_section,
         "unavailable_reason": r.unavailable_reason,
     }
+    checked_report = r
+    checked_filename = filename
     return json.dumps(data, ensure_ascii=False)
 
 def web_demo(filename: str) -> str:
     from docx import Document
     doc = Document()
+    doc.add_heading("正文引用核对示例", level=1)
+    doc.add_paragraph("注意力机制的相关研究见文献[2]，基础方法可参考[1,3]。")
+    doc.add_paragraph("此处故意引用文献表中不存在的编号[9]，演示待核对提示。")
     doc.add_heading("参考文献", level=1)
     entries = [
         "[1] 刘知远. 大模型时代的自然语言处理[M]. 北京: 清华大学出版社, 2023: 15-20.",
@@ -496,12 +522,16 @@ def web_demo(filename: str) -> str:
 def web_fix(filename: str) -> str:
     import dataclasses
     from thesislint.fixer import fix_entries
-    r = analyze(Path(filename))
-    result = fix_entries([e.text for e in r.entries])
+    if checked_report is None or checked_filename != filename:
+        raise ValueError("请先检查这份文档，再生成修正后列表")
+    r = checked_report
+    preserve_numbers = bool(r.citations and (r.citations.has_body or r.citations.citations))
+    result = fix_entries([e.text for e in r.entries], renumber=not preserve_numbers)
     data = {
         "lines": result["lines"],
         "summary": result["summary"],
         "entries": [dataclasses.asdict(e) for e in result["results"]],
+        "preserve_numbers": preserve_numbers,
     }
     return json.dumps(data, ensure_ascii=False)
 
@@ -661,7 +691,8 @@ def web_fix(filename: str) -> str:
     const s = data.summary;
     $("fixStats").textContent =
       `共 ${s.total} 条 · 自动修正 ${s.auto_fixed} 条 · ${s.manual_needed} 条需人工处理` +
-      (s.renumbered ? " · 已重新编号" : "");
+      (s.renumbered ? " · 已重新编号" : "") +
+      (data.preserve_numbers ? " · 保留文献编号" : "");
     $("fixList").textContent = data.lines.join("\n");
 
     const manual = data.entries.filter(e => e.unresolved.length > 0);
@@ -689,18 +720,34 @@ def web_fix(filename: str) -> str:
 
   function setButtons(on) {
     drop.classList.toggle("busy", busy);
+    drop.setAttribute("aria-disabled", String(busy));
     $("btnDemo").disabled = !(on && enginePromise);
     $("btnFix").disabled = !(on && lastFilename && canFix);
     $("btnCopy").disabled = !(on && hasReport);
     $("btnMd").disabled = !(on && hasReport);
   }
 
+  async function copyText(text, successMessage, failureMessage) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setStage(successMessage, false);
+    } catch {
+      setStage(failureMessage, false);
+    }
+  }
+
   /* ---------- 事件绑定 ---------- */
   drop.addEventListener("click", () => {
+    if (busy) return;
     const input = document.createElement("input");
     input.type = "file"; input.accept = ".docx";
     input.onchange = () => input.files[0] && checkFile(input.files[0]);
     input.click();
+  });
+  drop.addEventListener("keydown", e => {
+    if (e.target !== drop || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    if (!e.repeat) drop.click();
   });
   ["dragover", "dragenter"].forEach(ev =>
     drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
@@ -723,9 +770,7 @@ def web_fix(filename: str) -> str:
   });
   $("btnFix").addEventListener("click", generateFix);
   $("btnCopy").addEventListener("click", () => {
-    navigator.clipboard.writeText(reportText)
-      .then(() => setStage("✅ 体检报告已复制", false))
-      .catch(() => setStage("复制失败，请手动选择报告文本", false));
+    return copyText(reportText, "✅ 体检报告已复制", "复制失败，请手动选择报告文本");
   });
   $("btnMd").addEventListener("click", () => {
     const blob = new Blob([reportMarkdown], { type: "text/markdown;charset=utf-8" });
@@ -736,9 +781,7 @@ def web_fix(filename: str) -> str:
     URL.revokeObjectURL(a.href);
   });
   $("btnFixCopy").addEventListener("click", () => {
-    navigator.clipboard.writeText(fixData)
-      .then(() => setStage("✅ 修正后列表已复制，去 Word 里粘贴吧", false))
-      .catch(() => setStage("复制失败，请手动选择文本", false));
+    return copyText(fixData, "✅ 修正后列表已复制，去 Word 里粘贴吧", "复制失败，请手动选择文本");
   });
   $("btnFixTxt").addEventListener("click", () => {
     const blob = new Blob([fixData], { type: "text/plain;charset=utf-8" });

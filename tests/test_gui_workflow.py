@@ -45,6 +45,8 @@ def test_empty_document_is_not_shown_as_passed(tmp_path):
     app = gui.App.__new__(gui.App)
     callbacks = []
     finished = []
+    app._closed = False
+    app._ui_callbacks = SimpleNamespace(put=callbacks.append)
     app.root = SimpleNamespace(after=lambda delay, callback: callbacks.append(callback))
     app._finish = lambda *args: finished.append(args)
     app._work(str(path), path.name, 1)
@@ -68,7 +70,7 @@ def test_run_gui_schedules_initial_file(monkeypatch):
     scheduled = []
     opened = []
     app = SimpleNamespace(
-        root=SimpleNamespace(after=lambda delay, callback: scheduled.append(callback)),
+        _schedule=lambda delay, callback: scheduled.append(callback),
         check=opened.append,
         run=lambda: 0,
     )
@@ -80,15 +82,32 @@ def test_run_gui_schedules_initial_file(monkeypatch):
     assert opened == ["论文.docx"]
 
 
-def test_fix_uses_displayed_report_after_source_changes(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "body,extra_entry",
+    [
+        (None, None),
+        ("已有研究见文献[4]，待核对的引用见[9]。", None),
+        ("已有研究见文献[4]。", "李四. 缺号标题[J]. 学报, 2024"),
+        ("已有研究见文献[4]。", "[4] 李四. 重号标题[J]. 学报, 2024"),
+        ("正文没有可识别的引用编号。", None),
+        ("正文引用使用了超出支持范围的[1000]。", None),
+    ],
+)
+def test_fix_uses_displayed_report_after_source_changes(tmp_path, monkeypatch, body, extra_entry):
     path = tmp_path / "论文.docx"
     doc = Document()
+    if body:
+        doc.add_paragraph(body)
     doc.add_heading("参考文献", level=1)
-    original = "[1] 张三. 原始标题[J]. 学报, 2024"
+    original = f"[{4 if body else 1}] 张三. 原始标题[J]. 学报, 2024"
+    if extra_entry:
+        doc.add_paragraph(extra_entry)
     doc.add_paragraph(original)
     doc.save(path)
     app = gui.App.__new__(gui.App)
     callbacks = []
+    app._closed = False
+    app._ui_callbacks = SimpleNamespace(put=callbacks.append)
     app.root = SimpleNamespace(after=lambda delay, callback: callbacks.append(callback))
     app._job_id = 1
     app._last_path = str(path)
@@ -112,10 +131,23 @@ def test_fix_uses_displayed_report_after_source_changes(tmp_path, monkeypatch):
     app._auto_fix_pending = False
     app._work(str(path), path.name, 1)
     callbacks.pop(0)()
-    assert app._entry_snapshot == (original,)
+    expected_entries = (extra_entry, original) if extra_entry else (original,)
+    assert app._entry_snapshot == expected_entries
+    assert app._preserve_numbers_snapshot is bool(body)
+    if extra_entry:
+        assert cli.analyze(path).citations.checked is False
+        assert "无法可靠映射" in app._text_cache
+    elif body and "[9]" in body:
+        app._select_report_filter("error")
+        assert "S003" not in app._report_views["error"]
+        assert "S003" in app._report_views["warn"]
+        assert "S003" in app._text_cache
+        assert "S003" in app._md_cache
 
     # 用户在 Word 中另存了新内容；当前报告仍应对应旧内容。
-    doc.paragraphs[1].text = "[1] 李四. 后来修改的标题[J]. 学报, 2025."
+    doc.paragraphs[-1].text = "[1] 李四. 后来修改的标题[J]. 学报, 2025."
+    if body:
+        doc.paragraphs[0].text = "新正文没有引用编号。"
     doc.save(path)
     finished = []
     app._finish_fix = lambda *args: finished.append(args)
@@ -128,11 +160,39 @@ def test_fix_uses_displayed_report_after_source_changes(tmp_path, monkeypatch):
     callbacks.pop(0)()
     assert "原始标题" in finished[0][3]
     assert "后来修改" not in finished[0][3]
+    assert finished[0][3].splitlines()[-1].startswith("[4]" if body else "[1]")
+    assert ("保留文献编号" in finished[0][2]) is bool(body)
+    if extra_entry:
+        assert finished[0][3].splitlines()[0] == extra_entry + "."
+
+
+def test_new_check_clears_citation_snapshot_and_filtered_reports():
+    app = gui.App.__new__(gui.App)
+    app._entry_snapshot = ("旧文献",)
+    app._preserve_numbers_snapshot = True
+    app._text_cache = app._md_cache = app._fix_cache = "旧报告"
+    app._report_filter = "warn"
+    widget = SimpleNamespace(
+        configure=lambda **kw: None,
+        pack_forget=lambda: None,
+        delete=lambda *args: None,
+        insert=lambda *args: None,
+    )
+    app.stats_bar = app.report = app.btn_fix = widget
+    app._show_report_panel = lambda: None
+    app._clear_result_views()
+    assert app._entry_snapshot == ()
+    assert app._preserve_numbers_snapshot is False
+    assert app._report_filter == "all"
+    assert not any(app._report_views.values())
+    assert app._text_cache == app._fix_cache == ""
+    assert app._md_cache is None
 
 
 @pytest.mark.parametrize(
     "method,args",
     [
+        ("_finish", (1, "旧文档.docx", "", "", "", "", "", True, {}, (), {}, True)),
         ("_finish_error", (1, "旧错误")),
         ("_finish_fix_error", (1, "旧错误")),
         ("_finish_fix", (1, "旧修正", "旧统计", "旧内容", 0)),
@@ -142,8 +202,10 @@ def test_stale_callbacks_cannot_touch_new_job(method, args):
     app = gui.App.__new__(gui.App)
     app._job_id = 2
     app._fix_cache = "新内容"
+    app._preserve_numbers_snapshot = False
     getattr(app, method)(*args)
     assert app._fix_cache == "新内容"
+    assert app._preserve_numbers_snapshot is False
 
 
 @pytest.mark.parametrize(

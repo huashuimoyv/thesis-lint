@@ -11,7 +11,13 @@ permissions:
   contents: write
 
 jobs:
+  quality:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   build-windows-portable:
+    needs: quality
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +49,8 @@ jobs:
           print(f"OK: version matches v{actual}")
 
       - name: Run tests
+        env:
+          THESISLINT_RUN_GUI_TESTS: "1"
         run: pytest -q
 
       - name: Build single-file executable
@@ -51,7 +59,7 @@ jobs:
       - name: Verify portable executable
         shell: pwsh
         run: |
-          & .\dist\thesislint.exe --help | Out-Null
+          python build/verify_portable.py --executable dist/thesislint.exe
           if ($LASTEXITCODE -ne 0) {
             throw "Portable executable smoke test failed with exit code $LASTEXITCODE"
           }
@@ -84,25 +92,16 @@ jobs:
       - name: Write release notes
         if: github.ref_type == 'tag'
         shell: bash
-        run: |
-          cat > release_notes.md <<EOF
-          毕业论文「国标体检」工具 **${GITHUB_REF_NAME}** —— 检查 Word (.docx) 论文参考文献是否符合 GB/T 7714-2025。
-
-          ## 便携版说明
-          - 免安装、无需 Python，Windows 10+ x64
-          - 解压后双击 \`thesislint.exe\` 使用黑白双主题图形界面，也支持命令行
-          - 程序未签名；若系统提示，请先确认来自本仓库 Release 并核对 SHA256，再自行决定是否运行
-
-          ## 校验
-          \`\`\`
-          ${SHA256} *${ZIPNAME}
-          \`\`\`
-
-          完整变更与源码见 [CHANGELOG](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)。
-          EOF
+        run: >
+          python build/release_notes.py
+          --tag "${GITHUB_REF_NAME}"
+          --sha256 "${SHA256}"
+          --zipname "${ZIPNAME}"
+          --repository "${GITHUB_REPOSITORY}"
+          --server-url "${GITHUB_SERVER_URL}"
 
       - name: Upload dry-run artifact
-        if: github.ref_type != 'tag'
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ZIPNAME }}
@@ -111,7 +110,7 @@ jobs:
             ${{ env.ZIPNAME }}.sha256
 
       - name: Create GitHub Release
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'push' && github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash

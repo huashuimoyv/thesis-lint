@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 
+from .citations import CitationCheck
+
 
 @dataclass
 class EntryResult:
@@ -28,6 +30,7 @@ class Report:
     found_section: bool = False
     entries: list[EntryResult] = field(default_factory=list)
     section_issues: list = field(default_factory=list)
+    citations: CitationCheck | None = None
 
     @property
     def unavailable_reason(self) -> str | None:
@@ -43,15 +46,32 @@ class Report:
 
     @property
     def error_count(self) -> int:
-        return sum(e.errors for e in self.entries) + sum(
-            1 for i in self.section_issues if i.level == "ERROR"
+        return (
+            sum(e.errors for e in self.entries)
+            + sum(1 for i in self.section_issues if i.level == "ERROR")
+            + sum(
+                1 for i in (self.citations.issues if self.citations else []) if i.level == "ERROR"
+            )
         )
 
     @property
     def warn_count(self) -> int:
-        return sum(e.warnings for e in self.entries) + sum(
-            1 for i in self.section_issues if i.level == "WARN"
+        return (
+            sum(e.warnings for e in self.entries)
+            + sum(1 for i in self.section_issues if i.level == "WARN")
+            + sum(1 for i in (self.citations.issues if self.citations else []) if i.level == "WARN")
         )
+
+
+def _citation_summary(check: CitationCheck) -> str:
+    if not check.checked:
+        return f"正文引用核对：未完成（{check.reason or '缺少可核对的数据'}）"
+    numbers = {number for citation in check.citations for number in citation.numbers}
+    return (
+        f"正文引用核对：识别到 {len(check.citations)} 处引用标记，涉及 {len(numbers)} 个编号。"
+        "仅核对参考文献章节之前正文及表格中的数字方括号引用；"
+        "脚注、尾注、文本框和图片未纳入核对，疑似问题请人工确认。"
+    )
 
 
 def build_text_report(report: Report, level: str | None = None) -> str:
@@ -83,6 +103,14 @@ def build_text_report(report: Report, level: str | None = None) -> str:
         mark = "[ERROR]" if issue.level == "ERROR" else "[WARN ]"
         lines.append(f"{mark} {issue.code}: {issue.message}")
 
+    if report.citations is not None:
+        lines.extend(["", _citation_summary(report.citations)])
+        for issue in report.citations.issues:
+            if level is None or issue.level == level:
+                mark = "[ERROR]" if issue.level == "ERROR" else "[WARN ]"
+                lines.append(f"{mark} {issue.code}: {issue.message}")
+        lines.append("")
+
     n_pass = len(report.entries) - sum(1 for e in report.entries if e.issues)
     lines.append(
         f"体检结果：{n_pass} 条通过，{report.error_count} 个错误，{report.warn_count} 个警告"
@@ -110,7 +138,12 @@ def build_markdown_report(report: Report) -> str:
         f"- 错误：{report.error_count}\n"
         f"- 警告：{report.warn_count}\n"
     )
-    return head + "\n".join(rows) + "\n"
+    result = head + "\n".join(rows) + "\n"
+    if report.citations is not None:
+        result += f"\n## 正文引用核对\n\n{_citation_summary(report.citations)}\n"
+        for issue in report.citations.issues:
+            result += f"\n- {issue.level} {issue.code}: {issue.message}\n"
+    return result
 
 
 def build_json_report(report: Report) -> str:
@@ -129,5 +162,6 @@ def build_json_report(report: Report) -> str:
         ],
         # 章节级问题必须可寻址，否则 error_count 无法与明细对账
         "section_issues": [asdict(i) for i in report.section_issues],
+        "citations": asdict(report.citations) if report.citations is not None else None,
     }
     return json.dumps(data, ensure_ascii=False, indent=2)

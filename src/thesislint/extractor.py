@@ -10,7 +10,8 @@ import re
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
-from docx.oxml.table import CT_Tbl
+from docx.oxml.ns import qn
+from docx.oxml.table import CT_Tbl, CT_Tc
 from docx.oxml.text.paragraph import CT_P
 from docx.table import Table
 from docx.text.paragraph import Paragraph
@@ -25,6 +26,33 @@ _HEADING_LEVEL = re.compile(r"(?:heading|标题)\s*([1-9])", re.IGNORECASE)
 _ENTRY_START = re.compile(r"^\[(\d+)\]\s*(.*)$")
 _ENTRY_BREAK = re.compile(r"[\r\n]+(?=[^\S\r\n]*\[\d+\])")
 _TABLE_HEADER = re.compile(r"^(?:序号|编号)\s*(?:参考文献|文献(?:名称|条目)?)$")
+_TEXT_CONTAINERS = {qn(tag) for tag in ("w:r", "w:hyperlink", "w:fldSimple")}
+_TEXT_ELEMENTS = {qn(tag) for tag in ("w:t", "w:tab", "w:ptab", "w:br", "w:cr", "w:noBreakHyphen")}
+
+
+def _paragraph_block(paragraph, fields: list[bool]):
+    """读取已有的域显示结果，不执行域指令，也不深入文本框等非正文区域。"""
+    if not isinstance(paragraph, Paragraph):
+        return paragraph
+    parts: list[str] = []
+
+    def read(element):
+        for child in element:
+            if child.tag == qn("w:fldChar"):
+                kind = child.get(qn("w:fldCharType"))
+                if kind == "begin":
+                    fields.append(False)
+                elif kind == "separate" and fields:
+                    fields[-1] = True
+                elif kind == "end" and fields:
+                    fields.pop()
+            elif child.tag in _TEXT_CONTAINERS:
+                read(child)
+            elif child.tag in _TEXT_ELEMENTS and all(fields):
+                parts.append(str(child))
+
+    read(paragraph._p)
+    return SimpleNamespace(text="".join(parts), style=paragraph.style)
 
 
 @dataclass
@@ -34,8 +62,10 @@ class Bibliography:
     found: bool = False
     heading_text: str = ""
     entries: list[str] = field(default_factory=list)
-    # 条目序号与原文行号的对应关系（用于错误提示，1 起始）
+    # 条目与文档块位置的对应关系（段落或表格行，1 起始）
     line_numbers: list[int] = field(default_factory=list)
+    # 文献标题之前的文档块文本，保留空块以维持位置对应。
+    body_paragraphs: list[str] = field(default_factory=list)
 
 
 def _is_heading(paragraph) -> bool:
@@ -64,6 +94,27 @@ def _section_heading_pattern(section_keyword: str) -> re.Pattern[str] | None:
     return re.compile(rf"^{prefix}{spaced_keyword}\s*[:：]?\s*$", re.IGNORECASE)
 
 
+def _is_section_heading(paragraph, keyword_re: re.Pattern[str] | None) -> bool:
+    text = _paragraph_text(paragraph)
+    return bool(
+        keyword_re is not None
+        and keyword_re.fullmatch(text)
+        and (_is_heading(paragraph) or len(re.sub(r"\s+", "", text)) <= 10)
+    )
+
+
+def _is_section_end(paragraph, section_level: int | None) -> bool:
+    text = _paragraph_text(paragraph)
+    if not text:
+        return False
+    if _SECTION_STOP.match(text):
+        return True
+    if not _is_heading(paragraph):
+        return False
+    level = _heading_level(paragraph)
+    return not (section_level is not None and level is not None and level > section_level)
+
+
 def find_bibliography(paragraphs, section_keyword: str = "参考文献") -> Bibliography:
     """扫描段落列表，返回参考文献部分。
 
@@ -71,7 +122,9 @@ def find_bibliography(paragraphs, section_keyword: str = "参考文献") -> Bibl
     section_keyword: 章节标题关键词，允许中间夹杂空白字符。
     """
     result = Bibliography()
-    paragraphs = list(paragraphs)
+    fields: list[bool] = []
+    paragraphs = [_paragraph_block(paragraph, fields) for paragraph in paragraphs]
+    result.body_paragraphs = [_paragraph_text(p) for p in paragraphs]
     keyword_re = _section_heading_pattern(section_keyword)
     if keyword_re is None:
         return result
@@ -82,12 +135,12 @@ def find_bibliography(paragraphs, section_keyword: str = "参考文献") -> Bibl
         text = _paragraph_text(p)
         if not text:
             continue
-        compact_length = len(re.sub(r"\s+", "", text))
-        if keyword_re.fullmatch(text) and (_is_heading(p) or compact_length <= 10):
+        if _is_section_heading(p, keyword_re):
             start = i + 1
             section_level = _heading_level(p)
             result.found = True
             result.heading_text = text
+            result.body_paragraphs = result.body_paragraphs[:i]
             break
 
     if start is None:
@@ -99,13 +152,10 @@ def find_bibliography(paragraphs, section_keyword: str = "参考文献") -> Bibl
         raw = _paragraph_text(paragraph)
         if not raw:
             continue
-        if _SECTION_STOP.match(raw):
+        if _is_section_end(paragraph, section_level):
             break
         if _is_heading(paragraph):
-            level = _heading_level(paragraph)
-            if section_level is not None and level is not None and level > section_level:
-                continue
-            break
+            continue
 
         # 先按“换行 + 新序号”分条，再合并普通折行；同一段中的条目共享段落号。
         for fragment in _ENTRY_BREAK.split(paragraph.text or ""):
@@ -130,25 +180,49 @@ def find_bibliography(paragraphs, section_keyword: str = "参考文献") -> Bibl
     return result
 
 
-def _iter_document_blocks(document):
+def _iter_document_blocks(document, section_keyword: str = "参考文献"):
     """按 Word 正文顺序产出段落和表格行。"""
+    keyword_re = _section_heading_pattern(section_keyword)
+    in_bibliography = False
+    section_level = None
+    fields: list[bool] = []
     for child in document.element.body.iterchildren():
         if isinstance(child, CT_P):
-            yield Paragraph(child, document)
+            paragraph = _paragraph_block(Paragraph(child, document), fields)
+            if _is_section_heading(paragraph, keyword_re):
+                in_bibliography = True
+                section_level = _heading_level(paragraph)
+            elif in_bibliography and _is_section_end(paragraph, section_level):
+                in_bibliography = False
+            yield paragraph
         elif isinstance(child, CT_Tbl):
             table = Table(child, document)
+            # 合并单元格在多行/多列映射到同一 XML 节点；保留节点引用而非文本去重。
+            seen_cells: set[CT_Tc] = set()
             for row in table.rows:
-                seen_cells: set[int] = set()
                 parts: list[str] = []
                 for cell in row.cells:
-                    cell_id = id(cell._tc)
-                    if cell_id in seen_cells:
+                    if cell._tc in seen_cells:
                         continue
-                    seen_cells.add(cell_id)
-                    if cell.text.strip():
-                        parts.append(cell.text.strip())
-                normalized = [" ".join(part.split()) for part in parts]
-                entry_cells = [part for part in normalized if _ENTRY_START.match(part)]
+                    seen_cells.add(cell._tc)
+                    # 表格仍位于正文顺序中，域的开始/分隔/结束状态须跨单元格传播。
+                    cell_text = "\n".join(
+                        _paragraph_block(paragraph, fields).text for paragraph in cell.paragraphs
+                    ).strip()
+                    if cell_text:
+                        parts.append(cell_text)
+                row_block = SimpleNamespace(text=" ".join(parts), style=SimpleNamespace(name=""))
+                if _is_section_heading(row_block, keyword_re):
+                    in_bibliography = True
+                    section_level = None
+                elif in_bibliography and _is_section_end(row_block, section_level):
+                    in_bibliography = False
+                if not in_bibliography:
+                    # 正文行完整保留，避免把开头带引用的单元格误当成文献条目。
+                    yield row_block
+                    continue
+                # 只在判断开头时合并空白；输出保留格内换行，供后续逐条拆分。
+                entry_cells = [part for part in parts if _ENTRY_START.match(" ".join(part.split()))]
                 row_texts = entry_cells if len(entry_cells) > 1 else [" ".join(parts)]
                 for row_text in row_texts:
                     if _TABLE_HEADER.fullmatch(" ".join(row_text.split())):
@@ -161,4 +235,4 @@ def _iter_document_blocks(document):
 
 def find_bibliography_in_document(document, section_keyword: str = "参考文献") -> Bibliography:
     """从 ``python-docx`` 文档正文和表格中提取参考文献。"""
-    return find_bibliography(_iter_document_blocks(document), section_keyword)
+    return find_bibliography(_iter_document_blocks(document, section_keyword), section_keyword)

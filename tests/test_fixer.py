@@ -1,6 +1,44 @@
 """fixer 自动修正引擎的单元测试。"""
 
+import pytest
+
+from thesislint.checker import check_entry
 from thesislint.fixer import fix_entries, fix_entry
+from thesislint.parser import parse_reference
+
+
+@pytest.mark.parametrize(
+    "original",
+    [
+        "[1] SMITH J. Resource[EB/OL]. (2024-01-01)[2024-02-01]. https://example.org/range:10~20.",
+        "[1] SMITH J. Article[J]. Journal, 2024. doi: 10.1234/range:10~20.",
+        "[1] SMITH J. Title: 100~110. More title[J]. Journal, 2024.",
+        "[1] SMITH J. Title: 100~110. Journal, 2024.",
+        "[1] SMITH J. Article[J]. Journal, 2024: https://example.org/resource 10~20.",
+        "[1] SMITH J. Article[J]. Journal. doi: 10.1234/abc. Pages: 10~20.",
+        "[1] SMITH J. Article[J]. Journal, 123456: 10~20.",
+        "[1] SMITH J. Article[J]. Journal, 2024. HTTPS://EXAMPLE.ORG/range:10~20.",
+    ],
+)
+def test_page_correction_preserves_non_page_or_ambiguous_ranges(original):
+    result = fix_entry(original, 1)
+    assert result.fixed == original
+    assert parse_reference(original).page_separator is None
+    assert not any(issue.code == "W007" for issue in check_entry(original))
+    assert not any("页码区间" in change for change in result.fixes)
+
+
+@pytest.mark.parametrize("separator", ["~", "～", "–", "—"])
+@pytest.mark.parametrize("number", [1, 4])
+def test_page_correction_changes_only_pages_and_is_idempotent(separator, number):
+    original = (
+        f"[{number}] SMITH J. Title: 100~110. More title[J]. Journal, 2024: 10~20. "
+        "doi: 10.1234/range:30~40. https://example.org/range:50~60."
+    ).replace("2024: 10~20", f"2024: 10{separator}20")
+    result = fix_entry(original, 1, renumber=False)
+    assert result.fixed == original.replace(f"2024: 10{separator}20", "2024: 10-20")
+    assert parse_reference(original).page_range == (10, 20)
+    assert fix_entry(result.fixed, 1, renumber=False).fixed == result.fixed
 
 
 class TestSingleEntryFixes:
@@ -85,6 +123,30 @@ class TestSingleEntryFixes:
 
 
 class TestSectionFixes:
+    def test_preserve_numbers_when_body_citations_exist(self):
+        entries = [
+            "[4] 张三. 文一[J]. 学报，2024，1(1): 1-9",
+            "[4] 李四. 文二[J]. 学报, 2024, 2(1): 1-9.",
+            "王五. 文三[M]. 北京: 出版社, 2020: 1-9",
+        ]
+        result = fix_entries(entries, renumber=False)
+        assert result["lines"] == [
+            "[4] 张三. 文一[J]. 学报, 2024, 1(1): 1-9.",
+            entries[1],
+            entries[2] + ".",
+        ]
+        assert result["summary"]["renumbered"] is False
+        assert result["summary"]["manual_needed"] == 3
+        assert all(item.unresolved for item in result["results"])
+        assert "正文引用" in result["results"][2].unresolved[0]
+
+    def test_preserve_correct_numbers_without_manual_warning(self):
+        original = "[1] 张三. 文一[J]. 学报, 2024, 1(1): 1-9."
+        result = fix_entries([original], renumber=False)
+        assert result["lines"] == [original]
+        assert result["summary"]["manual_needed"] == 0
+        assert result["summary"]["auto_fixed"] == 0
+
     def test_renumbering(self):
         entries = [
             "[1] 张三. 文一[J]. 学报, 2024, 1(1): 1-9.",

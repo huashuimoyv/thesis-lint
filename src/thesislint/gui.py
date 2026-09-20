@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import queue
 import sys
 import threading
 from pathlib import Path
@@ -177,12 +178,17 @@ class App:
         self._fix_cache = ""
         self._last_path: str | None = None
         self._entry_snapshot: tuple[str, ...] = ()
+        self._preserve_numbers_snapshot = False
         self._job_id = 0
+        self._closed = False
+        self._ui_callbacks = queue.SimpleQueue()
+        self._after_ids: set[str] = set()
         self._hero_mode = "idle"  # idle / busy / done
         self._pulse_step = False
 
         root = self._make_root(tk)
         self.root = root
+        root.bind("<Destroy>", self._on_destroy, add="+")
         root.title("thesis-lint · 参考文献国标体检")
         root.geometry("940x700")
         root.minsize(780, 580)
@@ -208,14 +214,55 @@ class App:
         else:
             self._apply_titlebar_theme()
         self._pulse()
+        self._schedule(50, self._drain_ui_callbacks)
 
         # 测试钩子
         self._auto_fix_pending = os.environ.get("THESISLINT_GUI_AUTOFIX") == "1"
         if os.environ.get("THESISLINT_GUI_AUTODEMO") == "1":
-            root.after(300, self._auto_demo)
+            self._schedule(300, self._auto_demo)
         auto_close = os.environ.get("THESISLINT_GUI_AUTOCLOSE_MS")
         if auto_close and auto_close.isdigit():
-            root.after(int(auto_close), root.destroy)
+            self._schedule(int(auto_close), root.destroy)
+
+    def _schedule(self, delay, callback):
+        """仅在主线程安排界面回调，关闭时统一取消尚未触发的任务。"""
+        if self._closed:
+            return
+
+        def invoke():
+            self._after_ids.discard(timer)
+            if not self._closed:
+                callback()
+
+        timer = self.root.after(delay, invoke)
+        self._after_ids.add(timer)
+
+    def _post_ui(self, callback):
+        """工作线程只投递结果，不访问 Tk 或等待它的消息循环。"""
+        if not self._closed:
+            self._ui_callbacks.put(callback)
+
+    def _drain_ui_callbacks(self):
+        try:
+            while not self._closed:
+                try:
+                    callback = self._ui_callbacks.get_nowait()
+                except queue.Empty:
+                    break
+                callback()
+        finally:
+            self._schedule(50, self._drain_ui_callbacks)
+
+    def _on_destroy(self, event):
+        if event.widget is not self.root or self._closed:
+            return
+        self._closed = True
+        self._job_id += 1
+        for timer in self._after_ids:
+            self.root.after_cancel(timer)
+        self._after_ids.clear()
+        while not self._ui_callbacks.empty():
+            self._ui_callbacks.get_nowait()
 
     # ---------- 窗口与主题 ----------
 
@@ -265,13 +312,19 @@ class App:
 
     def _paint_button(self, btn, kind: str, *, hovered: bool = False):
         bg, fg, hbg, hfg = self._button_colors(kind)
+        border = bg
+        selected = getattr(self, "_report_filter", "all")
+        if btn is getattr(self, "report_filter_buttons", {}).get(selected):
+            bg = hbg = self._color("PAPER")
+            fg = hfg = self._color("ACCENT_HI")
+            border = self._color("ACCENT")
         btn.configure(
             bg=hbg if hovered else bg,
             fg=hfg if hovered else fg,
             activebackground=hbg,
             activeforeground=hfg,
             disabledforeground=self._color("FAINT"),
-            highlightbackground=bg,
+            highlightbackground=border,
             highlightcolor=self._color("ACCENT_HI"),
         )
 
@@ -472,7 +525,7 @@ class App:
         ).pack()
         tk.Label(
             self.hero,
-            text="拖入窗口、拖到 exe 图标、或点击选择 · 只支持 .docx（.doc 请先另存为 .docx）",
+            text="拖入或选择 .docx · 检查文献格式与正文数字引用（.doc 请先另存为 .docx）",
             font=(self._ui, 9),
             bg=SURFACE,
             fg=MUTED,
@@ -502,7 +555,7 @@ class App:
         self.busy_name.pack(side="left", padx=(12, 0))
         tk.Label(
             self.busy,
-            text="正在定位参考文献并逐条检查…",
+            text="正在检查文献格式与正文引用…",
             font=(self._ui, 9),
             bg=SURFACE,
             fg=MUTED,
@@ -639,7 +692,7 @@ class App:
 
         tk.Label(
             self.fix_panel,
-            text="⚠︎ 重新编号后请同步修改正文引用编号；粘贴回 Word 后建议再人工过一遍",
+            text="文档含正文时保留文献编号；正文引用请人工核对，粘贴回 Word 后重新体检",
             font=(self._ui, 8),
             bg=BG,
             fg=FAINT,
@@ -675,7 +728,7 @@ class App:
                     if self._pulse_step
                     else self._color("LINE_HI")
                 )
-            self.root.after(700, self._pulse)
+            self._schedule(700, self._pulse)
         except self._tk.TclError:
             pass  # 窗口已关闭
 
@@ -707,6 +760,9 @@ class App:
             return
         path = str(Path(tempfile.gettempdir()) / "thesislint_demo.docx")
         doc = Document()
+        doc.add_heading("正文引用核对示例", level=1)
+        doc.add_paragraph("注意力机制的相关研究见文献[2]，基础方法可参考[1,3]。")
+        doc.add_paragraph("此处故意引用文献表中不存在的编号[9]，演示待核对提示。")
         doc.add_heading("参考文献", level=1)
         for e in _DEMO_ENTRIES:
             doc.add_paragraph(e)
@@ -732,6 +788,7 @@ class App:
 
     def _clear_result_views(self):
         self._entry_snapshot = ()
+        self._preserve_numbers_snapshot = False
         self._text_cache = ""
         self._report_views = {"all": "", "error": "", "warn": ""}
         self._report_filter = "all"
@@ -812,8 +869,10 @@ class App:
                 "warns": report.warn_count,
             }
             entries = tuple(entry.text for entry in report.entries)
-            self.root.after(
-                0,
+            preserve_numbers = bool(
+                report.citations and (report.citations.has_body or report.citations.citations)
+            )
+            self._post_ui(
                 lambda: self._finish(
                     job_id,
                     path,
@@ -826,11 +885,12 @@ class App:
                     stats,
                     entries,
                     text_views,
+                    preserve_numbers,
                 ),
             )
         except Exception as exc:  # 解析失败等  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             detail = str(exc) or exc.__class__.__name__
-            self.root.after(0, lambda: self._finish_error(job_id, detail))
+            self._post_ui(lambda: self._finish_error(job_id, detail))
 
     def _finish(
         self,
@@ -845,6 +905,7 @@ class App:
         stats,
         entries,
         text_views,
+        preserve_numbers,
     ):
         if job_id != self._job_id or self._last_path != path:
             return
@@ -853,6 +914,7 @@ class App:
         self._report_filter = "all"
         self._md_cache = md
         self._entry_snapshot = entries
+        self._preserve_numbers_snapshot = preserve_numbers
 
         icon, result_label, result_color = _result_meta(
             found, stats["errors"], stats["warns"], stats["total"]
@@ -888,7 +950,7 @@ class App:
 
         if self._auto_fix_pending and found and stats["total"] > 0:
             self._auto_fix_pending = False
-            self.root.after(200, self.generate_fix)
+            self._schedule(200, self.generate_fix)
 
     def _render_report_text(self, text: str):
         """把报告写入文本区，并按问题级别上色。"""
@@ -915,14 +977,8 @@ class App:
         self._paint_report_filters()
 
     def _paint_report_filters(self):
-        for key, button in getattr(self, "report_filter_buttons", {}).items():
+        for button in getattr(self, "report_filter_buttons", {}).values():
             self._paint_button(button, "ghost")
-            if key == getattr(self, "_report_filter", "all"):
-                button.configure(
-                    bg=self._color("PAPER"),
-                    fg=self._color("ACCENT_HI"),
-                    highlightbackground=self._color("ACCENT"),
-                )
 
     def open_rule_basis(self):
         import webbrowser
@@ -959,19 +1015,23 @@ class App:
         self._set_status("正在生成修正后列表 …", ACCENT)
         job_id = self._job_id
         threading.Thread(
-            target=self._fix_work, args=(self._entry_snapshot, job_id), daemon=True
+            target=self._fix_work,
+            args=(self._entry_snapshot, job_id, self._preserve_numbers_snapshot),
+            daemon=True,
         ).start()
 
-    def _fix_work(self, entries: tuple[str, ...], job_id: int):
+    def _fix_work(self, entries: tuple[str, ...], job_id: int, preserve_numbers: bool = False):
         try:
             from .fixer import fix_entries
 
-            result = fix_entries(list(entries))
+            result = fix_entries(list(entries), renumber=not preserve_numbers)
             lines = result["lines"]
             s = result["summary"]
             header = (
                 f"共 {s['total']} 条 · 自动修正 {s['auto_fixed']} 条 · "
-                f"{s['manual_needed']} 条需人工处理" + (" · 已重新编号" if s["renumbered"] else "")
+                f"{s['manual_needed']} 条需人工处理"
+                + (" · 已重新编号" if s["renumbered"] else "")
+                + (" · 保留文献编号" if preserve_numbers else "")
             )
             manual_lines = []
             for e in result["results"]:
@@ -985,13 +1045,12 @@ class App:
                 fix_display += "\n\n以下条目无法全自动修正，请人工处理：\n" + "\n".join(
                     manual_lines
                 )
-            self.root.after(
-                0,
+            self._post_ui(
                 lambda: self._finish_fix(job_id, fix_display, header, body, len(manual_lines)),
             )
         except Exception as exc:  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             detail = str(exc) or exc.__class__.__name__
-            self.root.after(0, lambda: self._finish_fix_error(job_id, detail))
+            self._post_ui(lambda: self._finish_fix_error(job_id, detail))
 
     def _finish_fix(self, job_id: int, fix_display: str, header: str, body: str, n_manual: int):
         if job_id != self._job_id:
@@ -1035,26 +1094,46 @@ class App:
 
     def _save_export(self, target: str, content: str):
         try:
-            Path(target).write_text(content, encoding="utf-8")
-        except OSError as exc:
+            destination = Path(target)
+            resolved = destination.resolve()
+            source = getattr(self, "_last_path", None)
+            word_extensions = {".doc", ".docx", ".docm", ".dot", ".dotx", ".dotm"}
+            same_source = source and (
+                resolved == Path(source).resolve()
+                or (destination.exists() and Path(source).exists() and destination.samefile(source))
+            )
+            if (
+                destination.suffix.lower() in word_extensions
+                or resolved.suffix.lower() in word_extensions
+                or same_source
+            ):
+                self._set_status(
+                    "为保护论文，不能用导出内容覆盖 Word 文档或原始输入文件；请另存为 .md 或 .txt。",
+                    ERR,
+                )
+                return
+            destination.write_text(content, encoding="utf-8")
+        except (OSError, RuntimeError) as exc:
             self._set_status(f"导出失败，请选择其他保存位置或关闭占用文件的程序：{exc}", ERR)
             return
         self._set_status(f"已导出：{target}", OK)
 
-    def copy_report(self):
-        content = self._text_cache
+    def _copy_text(self, content: str, success_message: str):
         if not content:
             return
-        self.root.clipboard_clear()
-        self.root.clipboard_append(content)
-        self._set_status("报告已复制到剪贴板", OK)
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(content)
+        except self._tk.TclError:
+            self._set_status("复制失败，剪贴板暂不可用；请重试，或使用导出功能保存内容。", WARN)
+            return
+        self._set_status(success_message, OK)
+
+    def copy_report(self):
+        self._copy_text(self._text_cache, "报告已复制到剪贴板")
 
     def copy_fix(self):
-        if not self._fix_cache:
-            return
-        self.root.clipboard_clear()
-        self.root.clipboard_append(self._fix_cache)
-        self._set_status("修正后列表已复制，去 Word 里粘贴吧", OK)
+        self._copy_text(self._fix_cache, "修正后列表已复制，去 Word 里粘贴吧")
 
     def export_md(self):
         if not self._md_cache:
@@ -1107,5 +1186,5 @@ def run_gui(initial_path: Path | None = None) -> int:
         print(f"无法打开图形界面：{exc}\n可改用命令行：thesislint 论文.docx", file=sys.stderr)
         return 2
     if initial_path is not None:
-        app.root.after(0, lambda: app.check(str(initial_path)))
+        app._schedule(0, lambda: app.check(str(initial_path)))
     return app.run()

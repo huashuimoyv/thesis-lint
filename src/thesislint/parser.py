@@ -9,12 +9,46 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .patterns import NUM_RE, TAG_RE, URL_RE, YEAR_RE
+from .patterns import CITE_DATE_RE, NUM_RE, TAG_RE, URL_RE
 
 DOI_HINT_RE = re.compile(r"(?i)(?:\bdoi\s*:|https?://doi\.org/|\b10\.\d{2,9}/)")
 DOI_RE = re.compile(r"(?i)\b10\.\d{4,9}/[-._;()/:A-Z0-9]+")
 PAGE_RANGE_RE = re.compile(r":\s*([A-Za-z]?\d+)\s*([-~～–—])\s*([A-Za-z]?\d+)(?=\s*[.,;)]|\s*$)")
+_LOCATOR_RE = re.compile(r"(?i)(?:https?://|\b10\.\d{2,9}/)\S+")
+_PUBLICATION_YEAR_RE = re.compile(r"(?<![0-9A-Za-z])\d{4}(?![0-9A-Za-z])")
+_PAGE_FIELD_RE = re.compile(r"[:：]\s*[A-Za-z]?\d+(?:\s*[-~～–—]\s*[A-Za-z]?\d+)?")
+_ISSUE_NUMBER_RE = re.compile(r"(?<=\d)[(（]\d+[)）]")
 PUBLICATION_RE = re.compile(r"(?:^|[.]\s*)([^,.;:]{1,40})\s*:\s*([^,.;]{1,80})\s*,\s*$")
+
+
+def _publication_year_matches(text: str) -> tuple[re.Match[str], ...]:
+    scope = text
+    for pattern in (_LOCATOR_RE, CITE_DATE_RE, _PAGE_FIELD_RE, _ISSUE_NUMBER_RE):
+        scope = pattern.sub(lambda match: " " * len(match.group()), scope)
+    tag_match = TAG_RE.search(scope)
+    start = tag_match.end() if tag_match else 0
+    return tuple(_PUBLICATION_YEAR_RE.finditer(scope, start))
+
+
+def _page_range_candidates(text: str) -> tuple[re.Match[str], ...]:
+    """保留满足出版项边界的全部候选，供唯一定位和歧义提示共用。"""
+    scope = _LOCATOR_RE.sub(lambda match: " " * len(match.group()), text)
+    tag_match = TAG_RE.search(scope)
+    if not tag_match:
+        return ()
+    years = _publication_year_matches(text)
+    return tuple(
+        match
+        for match in PAGE_RANGE_RE.finditer(text, tag_match.end())
+        if scope[match.start() : match.end()] == match.group()
+        and any(year.end() <= match.start() for year in years)
+    )
+
+
+def find_page_range(text: str) -> re.Match[str] | None:
+    """定位唯一的出版项页码，保留原字符位置；不修改题名或资源标识。"""
+    candidates = _page_range_candidates(text)
+    return candidates[0] if len(candidates) == 1 else None
 
 
 @dataclass(frozen=True)
@@ -31,6 +65,7 @@ class ReferenceFields:
     page_separator: str | None
     publication_place: str | None
     publisher: str | None
+    page_range_ambiguous: bool = False
 
 
 def parse_reference(raw: str) -> ReferenceFields:
@@ -43,7 +78,8 @@ def parse_reference(raw: str) -> ReferenceFields:
     tag_match = TAG_RE.search(body)
     tag = tag_match.group(1) if tag_match else None
     base_tag = tag.split("/", 1)[0] if tag else None
-    years = tuple(YEAR_RE.findall(body))
+    year_matches = _publication_year_matches(body)
+    years = tuple(match.group() for match in year_matches)
 
     url_match = URL_RE.search(body)
     url = body[url_match.start() :].split()[0].rstrip(".,;。；") if url_match else None
@@ -51,9 +87,8 @@ def parse_reference(raw: str) -> ReferenceFields:
     doi_match = DOI_RE.search(body)
     doi = doi_match.group(0).rstrip(".,;") if doi_match else None
 
-    page_match = None
-    for candidate in PAGE_RANGE_RE.finditer(body):
-        page_match = candidate
+    page_candidates = _page_range_candidates(body)
+    page_match = page_candidates[0] if len(page_candidates) == 1 else None
     page_range = None
     page_separator = None
     if page_match:
@@ -66,8 +101,7 @@ def parse_reference(raw: str) -> ReferenceFields:
     publisher = None
     if tag_match:
         after_tag = body[tag_match.end() :]
-        year_match = YEAR_RE.search(after_tag)
-        before_year = after_tag[: year_match.start()] if year_match else after_tag
+        before_year = body[tag_match.end() : year_matches[0].start()] if year_matches else after_tag
         publication_match = PUBLICATION_RE.search(before_year)
         if publication_match:
             publication_place, publisher = (value.strip() for value in publication_match.groups())
@@ -85,4 +119,5 @@ def parse_reference(raw: str) -> ReferenceFields:
         page_separator=page_separator,
         publication_place=publication_place,
         publisher=publisher,
+        page_range_ambiguous=len(page_candidates) > 1,
     )

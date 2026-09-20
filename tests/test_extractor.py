@@ -30,6 +30,7 @@ class TestExtractor:
         assert len(bib.entries) == 2
         assert bib.entries[0].startswith("[1] 张三")
         assert bib.line_numbers == [4, 5]
+        assert bib.body_paragraphs == ["绪论", "正文正文。"]
 
     def test_merges_wrapped_entry(self):
         paras = fake_paragraphs(
@@ -93,7 +94,21 @@ class TestExtractor:
 
     def test_not_found(self):
         paras = fake_paragraphs(("只有正文", False))
-        assert not find_bibliography(paras).found
+        bib = find_bibliography(paras)
+        assert not bib.found
+        assert bib.body_paragraphs == ["只有正文"]
+
+    def test_body_empty_blocks_preserve_document_positions(self):
+        paras = fake_paragraphs(
+            ("", False),
+            ("正文[1]。", False),
+            ("   ", False),
+            ("参考文献", True),
+            ("[1] 张三. 文一[J]. 学报, 2024.", False),
+        )
+        bib = find_bibliography(paras)
+        assert bib.body_paragraphs == ["", "正文[1]。", ""]
+        assert bib.line_numbers == [5]
 
     def test_empty_section_keyword_is_not_a_heading(self):
         paras = fake_paragraphs(("参考文献", True))
@@ -171,6 +186,22 @@ class TestCliAnalyze:
             "[1] 张三. 文一[J]. 学报, 2024.",
             "[2] 李四. 文二[J]. 学报, 2023.",
         ]
+
+    def test_empty_or_deeper_heading_does_not_end_reference_table_processing(self):
+        from docx import Document
+
+        doc = Document()
+        doc.add_heading("参考文献", level=1)
+        doc.add_heading("", level=1)
+        doc.add_heading("中文文献", level=2)
+        table = doc.add_table(rows=1, cols=2)
+        table.cell(0, 0).text = "[1] 张三. 文一[J]. 学报, 2024."
+        table.cell(0, 1).text = "[2] 李四. 文二[J]. 学报, 2023."
+
+        bib = find_bibliography_in_document(doc)
+
+        assert len(bib.entries) == 2
+        assert bib.line_numbers == [4, 5]
 
     def test_duplicate_number_after_manual_break_is_reported(self, tmp_path):
         from docx import Document

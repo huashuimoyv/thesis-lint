@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   lint:
@@ -16,9 +20,9 @@ jobs:
       - name: Install ruff
         run: pip install ruff
       - name: Ruff check
-        run: ruff check src tests
+        run: ruff check src tests build/release_notes.py build/verify_portable.py build/verify_web_downloads.py
       - name: Ruff format check
-        run: ruff format --check src tests
+        run: ruff format --check src tests build/release_notes.py build/verify_portable.py build/verify_web_downloads.py
 
   test:
     runs-on: ubuntu-latest

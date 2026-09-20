@@ -6,7 +6,7 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: ["web/**", "src/**", "pyproject.toml", ".github/workflows/pages.yml"]
+    paths: ["web/**", "src/**", "tests/**", "pyproject.toml", "build/release_notes.py", ".github/workflows/ci.yml", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -19,7 +19,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quality:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   deploy:
+    needs: quality
     runs-on: ubuntu-latest
     environment:
       name: github-pages

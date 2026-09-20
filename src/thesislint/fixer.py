@@ -12,14 +12,13 @@ import re
 from dataclasses import dataclass, field
 
 from .checker import check_entry
-from .parser import PAGE_RANGE_RE, parse_reference
+from .parser import find_page_range, parse_reference
 from .patterns import (
     CITE_DATE_RE,
     FULLWIDTH_TRANS,
     NUM_RE,
     TAG_RE,
     URL_RE,
-    YEAR_RE,
     author_zone_bounds,
 )
 
@@ -37,15 +36,20 @@ class EntryFix:
     remaining_warnings: int = 0  # 修正后仍剩余的警告数
 
 
-def fix_entry(text: str, new_index: int) -> EntryFix:
+def fix_entry(text: str, new_index: int, *, renumber: bool = True) -> EntryFix:
     original = text.strip()
     work = original
     fixes: list[str] = []
     unresolved: list[str] = []
 
-    # 1. 序号：缺号或错号都按新序号重排
+    # 1. 文档含正文时保留原序号，避免只替换文献表后引用对应关系改变。
     num_m = NUM_RE.match(work)
-    if not num_m:
+    if not renumber:
+        if not num_m:
+            unresolved.append("缺少条目序号，请结合正文引用人工补充")
+        elif num_m.group(1) != str(new_index):
+            unresolved.append("保留原序号，请结合正文引用人工核对文献排列顺序")
+    elif not num_m:
         work = f"[{new_index}] {work}"
         fixes.append("补齐条目序号")
     else:
@@ -60,13 +64,10 @@ def fix_entry(text: str, new_index: int) -> EntryFix:
         work = translated
         fixes.append("全角标点改为半角")
 
-    def normalize_page_separator(match: re.Match[str]) -> str:
-        start, separator, end = match.groups()
-        return f": {start}-{end}" if separator != "-" else match.group(0)
-
-    normalized_pages = PAGE_RANGE_RE.sub(normalize_page_separator, work)
-    if normalized_pages != work:
-        work = normalized_pages
+    page_match = find_page_range(work)
+    if page_match and page_match.group(2) != "-":
+        start, _, end = page_match.groups()
+        work = work[: page_match.start()] + f": {start}-{end}" + work[page_match.end() :]
         fixes.append("页码区间分隔符改为半角连字符")
 
     # 3. 尾部句点
@@ -92,16 +93,18 @@ def fix_entry(text: str, new_index: int) -> EntryFix:
     tag_match = TAG_RE.search(work)
     if not tag_match:
         unresolved.append("缺少文献类型标识（[J]/[M]/[D]/[C]/[EB/OL]…），无法自动判断文献类型")
-    if not YEAR_RE.search(work):
-        unresolved.append("缺少出版年份，请自行补充")
+    fields = parse_reference(work)
+    if not fields.years:
+        unresolved.append("未识别到出版年份，请核对出版项并自行补充")
     if tag_match and "/OL" in tag_match.group(1):
         if not URL_RE.search(work):
             unresolved.append("电子资源缺少获取路径（网址）")
         if not CITE_DATE_RE.search(work):
             unresolved.append("电子资源建议补充引用日期 [YYYY-MM-DD]")
 
-    fields = parse_reference(work)
-    if fields.page_range and fields.page_range[0] > fields.page_range[1]:
+    if fields.page_range_ambiguous:
+        unresolved.append("出版项中识别到多个页码区间，无法唯一定位，请人工核对")
+    elif fields.page_range and fields.page_range[0] > fields.page_range[1]:
         unresolved.append("页码区间起止页疑似颠倒，请核对")
     if fields.doi_hint and not fields.doi:
         unresolved.append("DOI 格式疑似不完整，请核对")
@@ -125,9 +128,9 @@ def fix_entry(text: str, new_index: int) -> EntryFix:
     )
 
 
-def fix_entries(entries: list[str]) -> dict:
-    """批量修正，返回供 UI / 报告使用的结构化结果。"""
-    results = [fix_entry(e, i + 1) for i, e in enumerate(entries)]
+def fix_entries(entries: list[str], *, renumber: bool = True) -> dict:
+    """批量修正；文档含正文时传入 renumber=False，保留引用与文献的编号对应。"""
+    results = [fix_entry(e, i + 1, renumber=renumber) for i, e in enumerate(entries)]
     auto_fixed = sum(1 for r in results if r.fixes)
     manual = [r for r in results if r.unresolved]
     renumbered = any("重新编号" in f or "补齐条目序号" in f for r in results for f in r.fixes)

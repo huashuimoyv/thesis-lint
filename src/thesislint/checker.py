@@ -17,7 +17,6 @@ from .patterns import (
     NUM_RE,
     TAG_RE,
     URL_RE,
-    YEAR_RE,
     author_zone_bounds,
 )
 
@@ -84,8 +83,8 @@ def check_entry(raw: str) -> list[Issue]:
         if not CITE_DATE_RE.search(body):
             issues.append(Issue(WARN, "W002", "电子资源建议标注引用日期，如 [2025-01-01]"))
 
-    if not YEAR_RE.search(body):
-        issues.append(Issue(ERROR, "E004", "缺少出版年份（4 位数字）"))
+    if not fields.years:
+        issues.append(Issue(ERROR, "E004", "未识别到出版年份（4 位数字），请核对出版项"))
 
     bounds = author_zone_bounds(text)
     zone = text[bounds[0] : bounds[1]] if bounds else ""
@@ -108,7 +107,9 @@ def check_entry(raw: str) -> list[Issue]:
     if not text.endswith("."):
         issues.append(Issue(WARN, "W006", "条目未以句点“.”结尾"))
 
-    if fields.page_separator and fields.page_separator != "-":
+    if fields.page_range_ambiguous:
+        issues.append(Issue(WARN, "W007", "出版项中识别到多个页码区间，无法唯一定位，请人工核对"))
+    elif fields.page_separator and fields.page_separator != "-":
         issues.append(Issue(WARN, "W007", "页码区间建议使用半角连字符“-”"))
     elif fields.page_range and fields.page_range[0] > fields.page_range[1]:
         issues.append(Issue(WARN, "W007", "页码区间的起止页疑似颠倒，请核对"))
