@@ -33,6 +33,8 @@ def author_zone_bounds(text: str) -> tuple[int, int] | None:
 # ---- 字段校验 ----
 YEAR_RE = re.compile(r"(?:\d{4}|\(\d{4}-\d{2}-\d{2}\))")
 URL_RE = re.compile(r"https?://", re.IGNORECASE)
+# 定位连续的资源地址片段；供字段解析屏蔽与自动修正保护共用。
+LOCATOR_RE = re.compile(r"(?i)(?:https?://|\b10\.\d{2,9}/)\S+")
 CITE_DATE_RE = re.compile(r"\[\d{4}-\d{2}-\d{2}\]")
 
 # ---- 全角标点 ----

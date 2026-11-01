@@ -9,12 +9,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .patterns import CITE_DATE_RE, NUM_RE, TAG_RE, URL_RE
+from .patterns import CITE_DATE_RE, LOCATOR_RE, NUM_RE, TAG_RE, URL_RE
 
 DOI_HINT_RE = re.compile(r"(?i)(?:\bdoi\s*:|https?://doi\.org/|\b10\.\d{2,9}/)")
 DOI_RE = re.compile(r"(?i)\b10\.\d{4,9}/[-._;()/:A-Z0-9]+")
 PAGE_RANGE_RE = re.compile(r":\s*([A-Za-z]?\d+)\s*([-~～–—])\s*([A-Za-z]?\d+)(?=\s*[.,;)]|\s*$)")
-_LOCATOR_RE = re.compile(r"(?i)(?:https?://|\b10\.\d{2,9}/)\S+")
 _PUBLICATION_YEAR_RE = re.compile(r"(?<![0-9A-Za-z])\d{4}(?![0-9A-Za-z])")
 _PAGE_FIELD_RE = re.compile(r"[:：]\s*[A-Za-z]?\d+(?:\s*[-~～–—]\s*[A-Za-z]?\d+)?")
 _ISSUE_NUMBER_RE = re.compile(r"(?<=\d)[(（]\d+[)）]")
@@ -23,7 +22,7 @@ PUBLICATION_RE = re.compile(r"(?:^|[.]\s*)([^,.;:]{1,40})\s*:\s*([^,.;]{1,80})\s
 
 def _publication_year_matches(text: str) -> tuple[re.Match[str], ...]:
     scope = text
-    for pattern in (_LOCATOR_RE, CITE_DATE_RE, _PAGE_FIELD_RE, _ISSUE_NUMBER_RE):
+    for pattern in (LOCATOR_RE, CITE_DATE_RE, _PAGE_FIELD_RE, _ISSUE_NUMBER_RE):
         scope = pattern.sub(lambda match: " " * len(match.group()), scope)
     tag_match = TAG_RE.search(scope)
     start = tag_match.end() if tag_match else 0
@@ -32,7 +31,7 @@ def _publication_year_matches(text: str) -> tuple[re.Match[str], ...]:
 
 def _page_range_candidates(text: str) -> tuple[re.Match[str], ...]:
     """保留满足出版项边界的全部候选，供唯一定位和歧义提示共用。"""
-    scope = _LOCATOR_RE.sub(lambda match: " " * len(match.group()), text)
+    scope = LOCATOR_RE.sub(lambda match: " " * len(match.group()), text)
     tag_match = TAG_RE.search(scope)
     if not tag_match:
         return ()

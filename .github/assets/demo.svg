@@ -28,7 +28,7 @@
     <text x="48" y="134" fill="#7ee787">我的毕业论文.docx —— 参考文献共 42 条</text>
 
     <text x="48" y="170">
-      <tspan fill="#e6edf3">[7]（第 133 行）</tspan><tspan fill="#c9d1d9">李四. 论文名称. 学报, 2024.</tspan>
+      <tspan fill="#e6edf3">[7]（文档块 133）</tspan><tspan fill="#c9d1d9">李四. 论文名称. 学报, 2024.</tspan>
     </text>
     <text x="80" y="196">
       <tspan fill="#ff7b72" font-weight="bold">[ERROR]</tspan>
@@ -37,7 +37,7 @@
     </text>
 
     <text x="48" y="248">
-      <tspan fill="#e6edf3">[12]（第 138 行）</tspan><tspan fill="#c9d1d9">张三, 李四, 王五, 赵六. 某某研究[J]. 学报, 2024, 1(1): 1-9</tspan>
+      <tspan fill="#e6edf3">[12]（文档块 138）</tspan><tspan fill="#c9d1d9">张三, 李四, 王五, 赵六. 某某研究[J]. 学报, 2024, 1(1): 1-9</tspan>
     </text>
     <text x="80" y="274">
       <tspan fill="#d29922" font-weight="bold">[WARN ]</tspan>

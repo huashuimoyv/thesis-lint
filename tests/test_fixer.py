@@ -8,6 +8,50 @@ from thesislint.parser import parse_reference
 
 
 @pytest.mark.parametrize(
+    "locator",
+    [
+        "https://example.org/目录，版本?q=甲：乙",
+        "HTTPS://EXAMPLE.ORG/a（b）?q=甲；乙",
+        "https://doi.org/10.1234/abc（def）",
+        "doi：10.1234/abc（def）",
+    ],
+)
+def test_fullwidth_fix_preserves_locator_and_still_fixes_publication(locator):
+    original = f"[4] 张三，李四. 论文[J]. 学报，2024：10～20. {locator}."
+    protected = locator.removeprefix("doi：")
+
+    result = fix_entry(original, 1, renumber=False)
+
+    expected_locator = locator.replace("doi：", "doi: ")
+    assert result.fixed == f"[4] 张三, 李四. 论文[J]. 学报, 2024: 10-20. {expected_locator}."
+    assert protected in result.fixed
+    assert any("原始地址" in message for message in result.unresolved)
+    assert result.remaining_warnings == 1  # Protected punctuation still needs review.
+    assert fix_entry(result.fixed, 1, renumber=False).fixed == result.fixed
+
+
+def test_locator_only_warning_is_not_claimed_as_automatically_fixed():
+    original = "[1] 张三. 资料[J]. 学报, 2024. https://example.org/a，b."
+
+    batch = fix_entries([original])
+
+    assert batch["lines"] == [original]
+    assert batch["summary"]["auto_fixed"] == 0
+    assert batch["summary"]["manual_needed"] == 1
+    assert batch["results"][0].remaining_warnings == 1
+
+
+def test_multiple_locators_and_missing_final_period_are_preserved():
+    original = "[1] 张三. 论文[J]. 学报，2024. https://example.org/a，b 10.1234/c（d）"
+
+    result = fix_entry(original, 1)
+
+    assert result.fixed == original.replace("学报，", "学报, ") + "."
+    assert len(result.unresolved) == 1
+    assert any("句点" in message for message in result.fixes)
+
+
+@pytest.mark.parametrize(
     "original",
     [
         "[1] SMITH J. Resource[EB/OL]. (2024-01-01)[2024-02-01]. https://example.org/range:10~20.",

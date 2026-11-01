@@ -37,6 +37,78 @@ def test_make_root_still_works_when_drag_library_is_unavailable(monkeypatch):
     assert app._make_root(SimpleNamespace(Tk=lambda: root)) is root
 
 
+@pytest.mark.parametrize("failure_at", ["register", "bind"])
+def test_drag_setup_failure_destroys_partial_root_before_fallback(monkeypatch, failure_at):
+    events = []
+
+    def setup(step):
+        events.append(step)
+        if step == failure_at:
+            raise RuntimeError("synthetic TkDnD setup failure")
+
+    partial_root = SimpleNamespace(
+        drop_target_register=lambda _kind: setup("register"),
+        dnd_bind=lambda _event, _callback: setup("bind"),
+        destroy=lambda: events.append("destroy"),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "tkinterdnd2",
+        SimpleNamespace(DND_FILES="DND_Files", TkinterDnD=SimpleNamespace(Tk=lambda: partial_root)),
+    )
+    fallback = object()
+
+    def plain_root():
+        events.append("fallback")
+        return fallback
+
+    app = gui.App.__new__(gui.App)
+    assert app._make_root(SimpleNamespace(Tk=plain_root)) is fallback
+    assert events == (["register"] if failure_at == "register" else ["register", "bind"]) + [
+        "destroy",
+        "fallback",
+    ]
+
+
+def test_fix_thread_start_failure_preserves_results_and_allows_retry(monkeypatch):
+    app = gui.App.__new__(gui.App)
+    app._entry_snapshot = ("[4] 原始文献",)
+    app._preserve_numbers_snapshot = True
+    app._job_id = 1
+    app._text_cache = "原检查报告"
+    app._fix_cache = "上次修正列表"
+    options = {"state": "normal", "takefocus": True}
+    app.btn_fix = SimpleNamespace(configure=options.update)
+    stages, messages, started = [], [], []
+    app._set_stage = lambda stage, **kw: stages.append(stage)
+    app._set_status = lambda message, color: messages.append((message, color))
+    app._fix_work = lambda *args: started.append(args)
+
+    def cannot_start():
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(
+        gui.threading, "Thread", lambda **kwargs: SimpleNamespace(start=cannot_start)
+    )
+    app.generate_fix()
+
+    assert not started
+    assert options == {"state": "normal", "takefocus": True}
+    assert stages[-1] == 2
+    assert messages[-1][1] == gui.ERR
+    assert "生成失败" in messages[-1][0]
+    assert app._text_cache == "原检查报告"
+    assert app._fix_cache == "上次修正列表"
+
+    monkeypatch.setattr(
+        gui.threading,
+        "Thread",
+        lambda *, target, args, daemon: SimpleNamespace(start=lambda: target(*args)),
+    )
+    app.generate_fix()
+    assert started == [(app._entry_snapshot, 1, True)]
+
+
 def test_empty_document_is_not_shown_as_passed(tmp_path):
     path = tmp_path / "empty.docx"
     doc = Document()

@@ -1,5 +1,6 @@
 """Desktop export and clipboard failures must preserve documents and cached results."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -120,3 +121,85 @@ def test_clipboard_failure_is_recoverable(export_app, method, cache, fails_at):
     else:
         assert calls == [("clear", None), ("append", content)]
         assert messages[-1][1] == gui.OK
+
+
+@pytest.mark.parametrize(
+    "method,cache", [("export_md", "_md_cache"), ("export_fix_txt", "_fix_cache")]
+)
+@pytest.mark.parametrize("already_exists", [False, True])
+def test_partial_export_failure_preserves_existing_file_and_cleans_temporary(
+    export_app, monkeypatch, method, cache, already_exists
+):
+    app, source, messages = export_app
+    target = source.with_suffix(".txt")
+    if already_exists:
+        target.write_bytes(b"previous complete report")
+    before = set(source.parent.iterdir())
+    cached = getattr(app, cache)
+    original_write = Path.write_text
+    app._filedialog = SimpleNamespace(asksaveasfilename=lambda **kw: str(target))
+
+    def partial_write(path, content, **kwargs):
+        original_write(path, content[:2], **kwargs)
+        raise OSError("simulated disk full after a partial write")
+
+    monkeypatch.setattr(Path, "write_text", partial_write)
+    getattr(app, method)()
+
+    if already_exists:
+        assert target.read_bytes() == b"previous complete report"
+    else:
+        assert not target.exists()
+    assert set(source.parent.iterdir()) == before
+    assert getattr(app, cache) == cached
+    assert messages[-1][1] == gui.ERR
+
+
+def test_failed_final_replace_preserves_old_report(export_app, monkeypatch):
+    app, source, messages = export_app
+    target = source.with_suffix(".md")
+    target.write_bytes(b"previous complete report")
+    before = set(source.parent.iterdir())
+    attempts = []
+
+    def denied(path, destination):
+        attempts.append((path, destination))
+        assert path.parent == target.parent
+        assert path.read_text(encoding="utf-8") == app._md_cache
+        raise PermissionError("target locked")
+
+    monkeypatch.setattr(Path, "replace", denied)
+    app._save_export(str(target), app._md_cache)
+
+    assert len(attempts) == 1
+    assert target.read_bytes() == b"previous complete report"
+    assert set(source.parent.iterdir()) == before
+    assert messages[-1][1] == gui.ERR
+
+
+def test_invalid_unicode_export_keeps_existing_report(export_app):
+    app, source, messages = export_app
+    target = source.with_suffix(".md")
+    target.write_bytes(b"previous complete report")
+    before = set(source.parent.iterdir())
+
+    app._save_export(str(target), "invalid surrogate: \ud800")
+
+    assert target.read_bytes() == b"previous complete report"
+    assert set(source.parent.iterdir()) == before
+    assert messages[-1][1] == gui.ERR
+
+
+def test_successful_replace_overwrites_report_only(export_app):
+    app, source, messages = export_app
+    target = source.with_suffix(".txt")
+    target.write_bytes(b"previous complete report")
+    source_bytes = source.read_bytes()
+    before = set(source.parent.iterdir())
+
+    app._save_export(str(target), app._fix_cache)
+
+    assert target.read_text(encoding="utf-8") == app._fix_cache
+    assert source.read_bytes() == source_bytes
+    assert set(source.parent.iterdir()) == before
+    assert messages[-1][1] == gui.OK

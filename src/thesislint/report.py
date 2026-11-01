@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
+from html import escape
 
 from .citations import CitationCheck
 
@@ -11,7 +13,7 @@ from .citations import CitationCheck
 @dataclass
 class EntryResult:
     index: int  # 第几条（1 起始）
-    line: int  # 文档中的行号
+    line: int  # 文档块序号（段落或表格行，1 起始）；兼容既有 JSON 字段名
     text: str
     issues: list  # list[checker.Issue]
 
@@ -90,7 +92,7 @@ def build_text_report(report: Report, level: str | None = None) -> str:
         if not visible_issues:
             continue
         lines.append(
-            f"[{entry.index}]（第 {entry.line} 行）{entry.text[:60]}{'…' if len(entry.text) > 60 else ''}"
+            f"[{entry.index}]（文档块 {entry.line}）{entry.text[:60]}{'…' if len(entry.text) > 60 else ''}"
         )
         for issue in visible_issues:
             mark = "[ERROR]" if issue.level == "ERROR" else "[WARN ]"
@@ -118,31 +120,40 @@ def build_text_report(report: Report, level: str | None = None) -> str:
     return "\n".join(lines)
 
 
-def build_markdown_report(report: Report) -> str:
-    if report.unavailable_reason:
-        return f"# 参考文献体检报告：{report.source}\n\n{report.unavailable_reason}\n"
+def _markdown_cell(text: str) -> str:
+    """以字面文字显示动态内容，换行仍保留在同一 Markdown 块内。"""
+    literal = re.sub(r"([\\`*_{}\[\]()#+.!|~-])", r"\\\1", escape(text, quote=False))
+    return literal.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>")
 
-    rows = ["| 条目 | 行号 | 级别 | 问题 |", "|---|---|---|---|"]
+
+def build_markdown_report(report: Report) -> str:
+    source = _markdown_cell(report.source)
+    if report.unavailable_reason:
+        return f"# 参考文献体检报告：{source}\n\n{report.unavailable_reason}\n"
+
+    rows = ["| 条目 | 文档块 | 级别 | 问题 |", "|---|---|---|---|"]
     for entry in report.entries:
-        text = entry.text[:40].replace("|", "\\|")
+        text = _markdown_cell(entry.text[:40])
         for issue in entry.issues:
             rows.append(
-                f"| [{entry.index}] {text} | {entry.line} | {issue.level} | {issue.code} {issue.message} |"
+                f"| [{entry.index}] {text} | {entry.line} | {issue.level} | {issue.code} {_markdown_cell(issue.message)} |"
             )
     # 章节级问题以独立行呈现，与 text / json 保持一致
     for issue in report.section_issues:
-        rows.append(f"| **章节级** | — | {issue.level} | {issue.code} {issue.message} |")
+        rows.append(
+            f"| **章节级** | — | {issue.level} | {issue.code} {_markdown_cell(issue.message)} |"
+        )
     head = (
-        f"# 参考文献体检报告：{report.source}\n\n"
+        f"# 参考文献体检报告：{source}\n\n"
         f"- 条目总数：{len(report.entries)}\n"
         f"- 错误：{report.error_count}\n"
         f"- 警告：{report.warn_count}\n"
     )
-    result = head + "\n".join(rows) + "\n"
+    result = head + "\n" + "\n".join(rows) + "\n"
     if report.citations is not None:
-        result += f"\n## 正文引用核对\n\n{_citation_summary(report.citations)}\n"
+        result += f"\n## 正文引用核对\n\n{_markdown_cell(_citation_summary(report.citations))}\n"
         for issue in report.citations.issues:
-            result += f"\n- {issue.level} {issue.code}: {issue.message}\n"
+            result += f"\n- {issue.level} {issue.code}: {_markdown_cell(issue.message)}\n"
     return result
 
 

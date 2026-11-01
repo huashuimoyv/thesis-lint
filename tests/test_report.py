@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import json
 import re
+from html.parser import HTMLParser
 
-from thesislint.checker import check_entries
+import pytest
+from markdown_it import MarkdownIt
+
+from thesislint.checker import Issue, check_entries
 from thesislint.report import (
     EntryResult,
     Report,
@@ -111,3 +115,85 @@ class TestEdgeCases:
 
     def test_checkable_report_has_no_unavailable_reason(self):
         assert json.loads(build_json_report(_sample_report()))["unavailable_reason"] is None
+
+
+@pytest.mark.parametrize(
+    "original,escaped",
+    [
+        ("A | B", r"A \| B"),
+        (r"A \| B", r"A \\\| B"),
+        (r"A \\| B", r"A \\\\\| B"),
+        ("A\nB\r\nC\rD", "A<br>B<br>C<br>D"),
+    ],
+)
+def test_markdown_table_keeps_special_characters_inside_cells(original, escaped):
+    report = Report(source="sample.docx", found_section=True)
+    report.entries = [EntryResult(1, 3, original, [Issue("ERROR", "E001", original)])]
+    report.section_issues = [Issue("WARN", "S001", original)]
+
+    markdown = build_markdown_report(report)
+    rows = [line for line in markdown.splitlines() if line.startswith("| ")]
+
+    assert len(rows) == 3  # One header, one entry, one section issue.
+    assert f"| [1] {escaped} | 3 | ERROR | E001 {escaped} |" in rows
+    assert f"| **章节级** | — | WARN | S001 {escaped} |" in rows
+    # Display escaping must never rewrite the data used by JSON or the text report.
+    data = json.loads(build_json_report(report))
+    assert data["entries"][0]["text"] == original
+    assert data["entries"][0]["issues"][0]["message"] == original
+    assert data["section_issues"][0]["message"] == original
+
+
+def test_human_reports_describe_block_positions_without_changing_json_fields():
+    report = Report(source="sample.docx", found_section=True)
+    report.entries = [EntryResult(1, 3, "[4] 参考文献", [Issue("WARN", "W006", "缺少句点")])]
+
+    assert "（文档块 3）" in build_text_report(report)
+    assert "第 3 行" not in build_text_report(report)
+    assert "| 条目 | 文档块 | 级别 | 问题 |" in build_markdown_report(report)
+    assert json.loads(build_json_report(report))["entries"][0]["line"] == 3
+
+
+class _RenderedReport(HTMLParser):
+    def __init__(self, markdown):
+        super().__init__()
+        self.cells, self.headings, self.tags = [], [], []
+        self.current = None
+        self.content = []
+        self.feed(MarkdownIt("commonmark").enable("table").render(markdown))
+
+    def handle_starttag(self, tag, attrs):
+        self.tags.append(tag)
+        if tag in ("td", "h1"):
+            self.current, self.content = tag, []
+        elif tag == "br" and self.current:
+            self.content.append("\n")
+
+    def handle_data(self, data):
+        if self.current:
+            self.content.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == self.current:
+            values = self.cells if tag == "td" else self.headings
+            values.append("".join(self.content))
+            self.current = None
+
+
+@pytest.mark.parametrize(
+    "original", [r"A \| B", "<br><i>A&B</i>", "[x](https://example.test) _title_", "A\nB"]
+)
+def test_rendered_markdown_preserves_literal_text_and_table_columns(original):
+    source = "<b>题目</b> _测试_.docx"
+    report = Report(source=source, found_section=True)
+    report.entries = [EntryResult(1, 3, original, [Issue("WARN", "W006", original)])]
+    report.section_issues = [Issue("WARN", "S001", original)]
+
+    rendered = _RenderedReport(build_markdown_report(report))
+
+    assert rendered.tags.count("table") == 1
+    assert len(rendered.cells) == 8
+    assert rendered.cells[:4] == [f"[1] {original}", "3", "WARN", f"W006 {original}"]
+    assert rendered.cells[-1] == f"S001 {original}"
+    assert rendered.headings == [f"参考文献体检报告：{source}"]
+    assert not {"a", "img", "i", "b", "em", "script"}.intersection(rendered.tags)

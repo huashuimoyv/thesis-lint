@@ -15,7 +15,9 @@ from .checker import check_entry
 from .parser import find_page_range, parse_reference
 from .patterns import (
     CITE_DATE_RE,
+    FULLWIDTH_PUNCT,
     FULLWIDTH_TRANS,
+    LOCATOR_RE,
     NUM_RE,
     TAG_RE,
     URL_RE,
@@ -58,8 +60,19 @@ def fix_entry(text: str, new_index: int, *, renumber: bool = True) -> EntryFix:
         if num_m.group(1) != str(new_index):
             fixes.append("重新编号")
 
-    # 2. 全角标点 → 半角
-    translated = work.translate(FULLWIDTH_TRANS)
+    # 2. 只转换地址以外的标点；资源地址中的全角字符也可能是标识的一部分。
+    parts: list[str] = []
+    end = 0
+    protected_punctuation = False
+    for locator in LOCATOR_RE.finditer(work):
+        parts.append(work[end : locator.start()].translate(FULLWIDTH_TRANS))
+        parts.append(locator.group())
+        protected_punctuation |= bool(FULLWIDTH_PUNCT.search(locator.group()))
+        end = locator.end()
+    parts.append(work[end:].translate(FULLWIDTH_TRANS))
+    translated = "".join(parts)
+    if protected_punctuation:
+        unresolved.append("网址或 DOI 中的全角字符已保留，请核对原始地址")
     if translated != work:
         work = translated
         fixes.append("全角标点改为半角")

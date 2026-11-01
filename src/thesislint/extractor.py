@@ -16,6 +16,8 @@ from docx.oxml.text.paragraph import CT_P
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
+from .patterns import TAG_RE
+
 # 常见的中断章节标题，匹配到即认为参考文献部分结束
 _SECTION_STOP = re.compile(
     r"^(第?\s*\d+\s*章|致\s*谢|附\s*录|结\s*论|攻(读|士)|个人简历|创新点)",
@@ -96,11 +98,8 @@ def _section_heading_pattern(section_keyword: str) -> re.Pattern[str] | None:
 
 def _is_section_heading(paragraph, keyword_re: re.Pattern[str] | None) -> bool:
     text = _paragraph_text(paragraph)
-    return bool(
-        keyword_re is not None
-        and keyword_re.fullmatch(text)
-        and (_is_heading(paragraph) or len(re.sub(r"\s+", "", text)) <= 10)
-    )
+    # 完整匹配已经排除了正文提及，无须再限制显式指定的章节标题长度。
+    return bool(keyword_re is not None and keyword_re.fullmatch(text))
 
 
 def _is_section_end(paragraph, section_level: int | None) -> bool:
@@ -108,7 +107,8 @@ def _is_section_end(paragraph, section_level: int | None) -> bool:
     if not text:
         return False
     if _SECTION_STOP.match(text):
-        return True
+        # 普通文献续行可能以“结论”等词开头，类型标识表明它仍是文献内容。
+        return _is_heading(paragraph) or TAG_RE.search(text) is None
     if not _is_heading(paragraph):
         return False
     level = _heading_level(paragraph)

@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from thesislint.cli import analyze
 from thesislint.extractor import find_bibliography, find_bibliography_in_document
 
@@ -15,6 +17,26 @@ def fake_paragraphs(*pairs):
 
 
 class TestExtractor:
+    def test_unnumbered_reference_with_section_word_is_preserved(self):
+        entry = "附录编写组. 技术附录[M]. 北京: 出版社, 2024."
+        bib = find_bibliography(
+            fake_paragraphs(("参考文献", True), (entry, False), ("致谢", False))
+        )
+        assert bib.entries == [entry]
+        assert bib.line_numbers == [2]
+
+    def test_real_heading_still_ends_section_even_with_a_type_marker(self):
+        entry = "[1] 张三. 文一[J]. 学报, 2024."
+        bib = find_bibliography(
+            fake_paragraphs(
+                ("参考文献", True),
+                (entry, False),
+                ("附录：文献类型 [J] 的说明", True),
+                ("[2] 不应读入的附录内容", False),
+            )
+        )
+        assert bib.entries == [entry]
+
     def test_finds_section_between_headings(self):
         paras = fake_paragraphs(
             ("绪论", True),
@@ -134,6 +156,65 @@ class TestExtractor:
 
 
 class TestCliAnalyze:
+    @pytest.mark.parametrize("in_table", [False, True])
+    def test_section_word_in_reference_continuation_does_not_drop_later_entries(
+        self, tmp_path, in_table
+    ):
+        from docx import Document
+
+        doc = Document()
+        doc.add_heading("参考文献", level=1)
+        lines = [
+            "[1] 张三. 研究结果与",
+            "结论的评估[J]. 学报, 2024.",
+            "[2] 李四. 正常条目[J]. 学报, 2023.",
+            "致谢",
+            "[3] 不应读入的致谢内容",
+        ]
+        if in_table:
+            table = doc.add_table(rows=len(lines), cols=1)
+            for row, line in zip(table.rows, lines, strict=True):
+                row.cells[0].text = line
+        else:
+            for line in lines:
+                doc.add_paragraph(line)
+        path = tmp_path / "wrapped-reference.docx"
+        doc.save(path)
+
+        report = analyze(path)
+
+        assert [entry.text for entry in report.entries] == [" ".join(lines[:2]), lines[2]]
+        assert [entry.line for entry in report.entries] == [2, 4]
+
+    @pytest.mark.parametrize("keyword", ["Bibliography", "Selected References"])
+    @pytest.mark.parametrize("heading_in_table", [False, True])
+    def test_custom_plain_heading_is_not_limited_to_ten_characters(
+        self, tmp_path, keyword, heading_in_table
+    ):
+        from docx import Document
+
+        doc = Document()
+        body = f"正文提及 {keyword}，不应从这里开始提取。"
+        doc.add_paragraph(body)
+        if heading_in_table:
+            doc.add_table(rows=1, cols=1).cell(0, 0).text = keyword
+        else:
+            doc.add_paragraph(keyword)
+        entry = "[1] Smith J. Title[J]. Journal, 2024, 1(1): 1-9."
+        doc.add_paragraph(entry)
+        doc.add_paragraph("致谢")
+        doc.add_paragraph("不属于参考文献的内容")
+        path = tmp_path / "custom-heading.docx"
+        doc.save(path)
+        original = path.read_bytes()
+
+        report = analyze(path, keyword)
+
+        assert report.found_section
+        assert [result.text for result in report.entries] == [entry]
+        assert report.entries[0].line == 3
+        assert path.read_bytes() == original
+
     def test_references_in_table_are_extracted_in_document_order(self, tmp_path):
         from docx import Document
 

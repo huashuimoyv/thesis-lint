@@ -158,6 +158,24 @@ def _split_drop_paths(data: str, splitlist) -> list[str]:
         return [fallback] if fallback else []
 
 
+def _atomic_write_export(destination: Path, content: str) -> None:
+    """先在目标目录写完整内容，成功关闭文件后再替换，失败保留原有报告。"""
+    from tempfile import NamedTemporaryFile
+
+    temporary = None
+    try:
+        with NamedTemporaryFile(
+            dir=destination.parent, prefix=".thesislint-", suffix=".tmp", delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+        temporary.write_text(content, encoding="utf-8")
+        temporary.replace(destination)
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 class App:
     def __init__(self) -> None:
         import tkinter as tk
@@ -268,6 +286,7 @@ class App:
 
     def _make_root(self, tk):
         """优先 tkinterdnd2 的 Tk 获得整窗拖拽；失败退回普通 Tk。"""
+        root = None
         try:
             from tkinterdnd2 import DND_FILES, TkinterDnD
 
@@ -276,6 +295,8 @@ class App:
             root.dnd_bind("<<Drop>>", self._on_drop)
             return root
         except Exception:  # noqa: BLE001  tkinterdnd2 不可用时回退纯 Tk（拖拽降级为点击）
+            if root is not None:
+                root.destroy()
             return tk.Tk()
 
     def _style_ttk(self, ttk):
@@ -369,7 +390,7 @@ class App:
         return btn
 
     def _set_enabled(self, btn, enabled):
-        btn.configure(state="normal" if enabled else "disabled")
+        btn.configure(state="normal" if enabled else "disabled", takefocus=enabled)
 
     def _bind_shortcuts(self):
         self.root.bind_all("<Control-o>", lambda _e: self.pick_file())
@@ -753,21 +774,27 @@ class App:
     def check_demo(self):
         import tempfile
 
+        temporary_dir = None
         try:
             from docx import Document
-        except Exception as exc:  # pragma: no cover  # noqa: BLE001
+
+            temporary_dir = tempfile.TemporaryDirectory(prefix="thesislint-demo-")
+            path = str(Path(temporary_dir.name) / "thesislint_demo.docx")
+            doc = Document()
+            doc.add_heading("正文引用核对示例", level=1)
+            doc.add_paragraph("注意力机制的相关研究见文献[2]，基础方法可参考[1,3]。")
+            doc.add_paragraph("此处故意引用文献表中不存在的编号[9]，演示待核对提示。")
+            doc.add_heading("参考文献", level=1)
+            for e in _DEMO_ENTRIES:
+                doc.add_paragraph(e)
+            doc.save(path)
+        except Exception as exc:  # noqa: BLE001  生成失败时保留上一份可用报告
+            if temporary_dir is not None:
+                with contextlib.suppress(OSError):
+                    temporary_dir.cleanup()
             self._set_status(f"无法生成示例：{exc}", ERR)
             return
-        path = str(Path(tempfile.gettempdir()) / "thesislint_demo.docx")
-        doc = Document()
-        doc.add_heading("正文引用核对示例", level=1)
-        doc.add_paragraph("注意力机制的相关研究见文献[2]，基础方法可参考[1,3]。")
-        doc.add_paragraph("此处故意引用文献表中不存在的编号[9]，演示待核对提示。")
-        doc.add_heading("参考文献", level=1)
-        for e in _DEMO_ENTRIES:
-            doc.add_paragraph(e)
-        doc.save(path)
-        self.check(path, display_name="示例论文")
+        self.check(path, display_name="示例论文", _temporary_dir=temporary_dir)
 
     def _auto_demo(self):
         self.check_demo()
@@ -810,40 +837,53 @@ class App:
         self.report_box.pack_forget()
         self.report_box.pack(fill="both", expand=True, padx=26, pady=(0, 4), after=self.toolbar)
 
-    def check(self, path: str, display_name: str | None = None):
-        source = Path(path)
-        if source.suffix.lower() != ".docx":
-            self._messagebox.showwarning(
-                "不支持的文件", "目前只支持 .docx 文件。\n如果是 .doc，请先用 Word 另存为 .docx。"
+    def check(self, path: str, display_name: str | None = None, *, _temporary_dir=None):
+        # 示例目录在成功启动线程后才转交；所有早退/启动失败仍由此处清理。
+        try:
+            if getattr(self, "_closed", False):
+                return
+            source = Path(path)
+            if source.suffix.lower() != ".docx":
+                self._messagebox.showwarning(
+                    "不支持的文件",
+                    "目前只支持 .docx 文件。\n如果是 .doc，请先用 Word 另存为 .docx。",
+                )
+                return
+            if not source.is_file():
+                self._set_status(f"文件不存在或无法读取：{source}", ERR)
+                return
+
+            self._job_id += 1
+            job_id = self._job_id
+            self._last_path = str(source)
+            self._display_name = display_name or source.name
+            self._clear_result_views()
+            self._show_drop_state("busy")
+            self.busy_name.configure(text=self._display_name)
+            self._set_stage(2, completed=1)
+            self._set_status(f"正在检查 {self._display_name} …", ACCENT)
+            self.drop.configure(
+                highlightbackground=self._color("LINE"), highlightcolor=self._color("LINE")
             )
-            return
-        if not source.is_file():
-            self._set_status(f"文件不存在或无法读取：{source}", ERR)
-            return
+            for b in (self.btn_copy, self.btn_md, self.btn_fix):
+                self._set_enabled(b, False)
+            self._set_enabled(self.btn_fix_copy, False)
+            self._set_enabled(self.btn_fix_txt, False)
+            args = (str(source), self._display_name, job_id)
+            if _temporary_dir is not None:
+                args += (_temporary_dir,)
+            try:
+                threading.Thread(target=self._work, args=args, daemon=True).start()
+            except Exception as exc:  # noqa: BLE001  无法启动后台线程时恢复界面
+                self._finish_error(job_id, str(exc) or exc.__class__.__name__)
+                return
+            _temporary_dir = None
+        finally:
+            if _temporary_dir is not None:
+                with contextlib.suppress(OSError):
+                    _temporary_dir.cleanup()
 
-        self._job_id += 1
-        job_id = self._job_id
-        self._last_path = str(source)
-        self._display_name = display_name or source.name
-        self._clear_result_views()
-        self._show_drop_state("busy")
-        self.busy_name.configure(text=self._display_name)
-        self._set_stage(2, completed=1)
-        self._set_status(f"正在检查 {self._display_name} …", ACCENT)
-        self.drop.configure(
-            highlightbackground=self._color("LINE"), highlightcolor=self._color("LINE")
-        )
-        for b in (self.btn_copy, self.btn_md, self.btn_fix):
-            self._set_enabled(b, False)
-        self._set_enabled(self.btn_fix_copy, False)
-        self._set_enabled(self.btn_fix_txt, False)
-        threading.Thread(
-            target=self._work,
-            args=(str(source), self._display_name, job_id),
-            daemon=True,
-        ).start()
-
-    def _work(self, path: str, display_name: str, job_id: int):
+    def _work(self, path: str, display_name: str, job_id: int, _temporary_dir=None):
         try:
             from .cli import analyze
             from .report import build_markdown_report, build_text_report
@@ -891,6 +931,11 @@ class App:
         except Exception as exc:  # 解析失败等  # noqa: BLE001  刻意宽捕获：任一失败都走降级路径
             detail = str(exc) or exc.__class__.__name__
             self._post_ui(lambda: self._finish_error(job_id, detail))
+        finally:
+            if _temporary_dir is not None:
+                # 窗口关闭不干预正在读取的文档；清理失败也不丢弃已生成的结果。
+                with contextlib.suppress(OSError):
+                    _temporary_dir.cleanup()
 
     def _finish(
         self,
@@ -1014,11 +1059,14 @@ class App:
         self._set_stage(3, completed=2)
         self._set_status("正在生成修正后列表 …", ACCENT)
         job_id = self._job_id
-        threading.Thread(
-            target=self._fix_work,
-            args=(self._entry_snapshot, job_id, self._preserve_numbers_snapshot),
-            daemon=True,
-        ).start()
+        try:
+            threading.Thread(
+                target=self._fix_work,
+                args=(self._entry_snapshot, job_id, self._preserve_numbers_snapshot),
+                daemon=True,
+            ).start()
+        except RuntimeError as exc:
+            self._finish_fix_error(job_id, str(exc))
 
     def _fix_work(self, entries: tuple[str, ...], job_id: int, preserve_numbers: bool = False):
         try:
@@ -1112,8 +1160,8 @@ class App:
                     ERR,
                 )
                 return
-            destination.write_text(content, encoding="utf-8")
-        except (OSError, RuntimeError) as exc:
+            _atomic_write_export(resolved, content)
+        except (OSError, RuntimeError, UnicodeError) as exc:
             self._set_status(f"导出失败，请选择其他保存位置或关闭占用文件的程序：{exc}", ERR)
             return
         self._set_status(f"已导出：{target}", OK)

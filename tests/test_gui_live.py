@@ -310,3 +310,97 @@ def test_export_and_clipboard_error_recovery_in_real_widgets(tmp_path, monkeypat
         assert not errors
     finally:
         app.root.destroy()
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_export_partial_write_failure_can_be_retried_in_real_widgets(tmp_path, monkeypatch, theme):
+    from pathlib import Path
+
+    for key in ("THESISLINT_GUI_AUTODEMO", "THESISLINT_GUI_AUTOFIX", "THESISLINT_GUI_AUTOCLOSE_MS"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("THESISLINT_GUI_THEME", theme)
+    target = tmp_path / "已有报告.md"
+    target.write_bytes(b"previous complete report")
+    app = gui.App()
+    app.root.withdraw()
+    errors = []
+    app.root.report_callback_exception = lambda _kind, error, _tb: errors.append(error)
+    app._md_cache = "# 完整报告\n中文内容"
+    app._filedialog = SimpleNamespace(asksaveasfilename=lambda **kw: str(target))
+    app._set_enabled(app.btn_md, True)
+    original_write = Path.write_text
+
+    def partial_write(path, content, **kwargs):
+        original_write(path, content[:1], **kwargs)
+        raise OSError("simulated disk full")
+
+    try:
+        with monkeypatch.context() as failure:
+            failure.setattr(Path, "write_text", partial_write)
+            app.btn_md.invoke()
+        assert not errors
+        assert "导出失败" in app.status.cget("text")
+        assert app.status.cget("fg") == app._color("ERR")
+        assert target.read_bytes() == b"previous complete report"
+        assert set(tmp_path.iterdir()) == {target}
+
+        app.btn_md.invoke()
+        assert not errors
+        assert target.read_text(encoding="utf-8") == app._md_cache
+        assert app.status.cget("fg") == app._color("OK")
+        assert set(tmp_path.iterdir()) == {target}
+    finally:
+        app.root.destroy()
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_demo_analysis_and_fix_outlive_the_temporary_document(tmp_path, monkeypatch, theme):
+    import tempfile
+    from pathlib import Path
+
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    for key in ("THESISLINT_GUI_AUTODEMO", "THESISLINT_GUI_AUTOFIX", "THESISLINT_GUI_AUTOCLOSE_MS"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("THESISLINT_GUI_THEME", theme)
+    app = gui.App()
+    app.root.withdraw()
+    errors, completed = [], []
+
+    def failed(_kind, error, _tb):
+        errors.append(error)
+        app.root.destroy()
+
+    def timeout():
+        failed(None, TimeoutError("示例检查/清理/修正未在 10 秒内完成"), None)
+
+    def wait_for_fix():
+        if not app._fix_cache:
+            app._schedule(25, wait_for_fix)
+            return
+        assert len(app._fix_cache.splitlines()) == 5
+        assert "保留文献编号" in app.fix_stats.cget("text")
+        completed.append(True)
+        app.root.destroy()
+
+    def wait_for_report():
+        if not app._entry_snapshot or Path(app._last_path).exists():
+            app._schedule(25, wait_for_report)
+            return
+        assert len(app._entry_snapshot) == 5
+        assert not Path(app._last_path).parent.exists()
+        assert "S003" in app._text_cache
+        assert app._display_name == "示例论文"
+        app.generate_fix()
+        app._schedule(25, wait_for_fix)
+
+    app.root.report_callback_exception = failed
+    app._schedule(10000, timeout)
+    app._schedule(25, wait_for_report)
+    try:
+        app.check_demo()
+        app.run()
+        assert not errors, errors
+        assert completed == [True]
+    finally:
+        if not app._closed:
+            app.root.destroy()
