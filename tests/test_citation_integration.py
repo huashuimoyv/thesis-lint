@@ -80,6 +80,25 @@ def test_clean_citation_document_passes_strict_with_custom_section(tmp_path, mon
     assert data["warn_count"] == 0
 
 
+def test_fullwidth_body_citations_pass_strict_and_preserve_reported_text(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(gui, "_supports_tk", lambda: False)
+    path = _document(tmp_path / "全角引用.docx", ["依据[1]和［２－３］，年份［２０２４］。"])
+    original = path.read_bytes()
+
+    assert main([str(path), "--strict", "--format", "json"]) == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["citations"]["checked"]
+    assert data["citations"]["issues"] == []
+    assert [(item["raw"], item["numbers"]) for item in data["citations"]["citations"]] == [
+        ("[1]", [1]),
+        ("［２－３］", [2, 3]),
+    ]
+    assert path.read_bytes() == original
+
+
 def test_missing_bibliography_does_not_claim_citation_check_completed(tmp_path):
     path = _document(tmp_path / "no-bib.docx", ["正文引用[1]。"], heading="其他章节")
     report = analyze(path)

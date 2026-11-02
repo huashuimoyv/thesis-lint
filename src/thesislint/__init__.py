@@ -3,7 +3,7 @@
 检查 Word (.docx) 论文的参考文献是否符合 GB/T 7714-2025。
 """
 
-__version__ = "0.8.0"
+__version__ = "0.8.1"
 
 from .checker import Issue, check_entries, check_entry
 from .extractor import find_bibliography, find_bibliography_in_document

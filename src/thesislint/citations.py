@@ -20,6 +20,7 @@ _ITEM = rf"{_NUMBER}(?:\s*{_DASH}\s*{_NUMBER})?"
 _GROUP = re.compile(rf"\s*{_ITEM}(?:\s*[,，、]\s*{_ITEM})*\s*")
 _SPLIT_ITEMS = re.compile(r"\s*[,，、]\s*")
 _SPLIT_RANGE = re.compile(rf"\s*{_DASH}\s*")
+_FULLWIDTH_DIGITS_TRANS = str.maketrans("０１２３４５６７８９", "0123456789")
 
 
 @dataclass
@@ -43,6 +44,7 @@ def _find_citations(body_paragraphs: list[str]) -> list[Citation]:
     for line, text in enumerate(body_paragraphs, start=1):
         for match in _BRACKETS.finditer(text):
             content = match.group(1) if match.group(1) is not None else match.group(2)
+            content = content.translate(_FULLWIDTH_DIGITS_TRANS)
             if len(content) > 2000 or not _GROUP.fullmatch(content):
                 continue
             numbers: list[int] = []

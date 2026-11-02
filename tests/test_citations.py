@@ -49,6 +49,15 @@ def test_list_comma_and_empty_blocks_preserve_locations():
     assert result.citations == [Citation([1, 2, 3], 3, "[1、2、3]")]
 
 
+@pytest.mark.parametrize("raw", ["［１，２－３］", "[１,2-３]", "[1，２、３]"])
+def test_fullwidth_and_mixed_digits_match_references_without_changing_raw(raw):
+    result = check_citations(bibliography([f"已有研究{raw}。"], ("１", 2, "３")))
+
+    assert result.checked
+    assert result.issues == []
+    assert result.citations == [Citation([1, 2, 3], 1, raw)]
+
+
 def test_missing_citation_is_reported_once_and_unused_entry_has_location():
     result = check_citations(bibliography(["", "引用[1][4]，重复[4][1]。"], (1, 2)))
 
@@ -91,6 +100,11 @@ def test_nonexistent_number_does_not_create_order_cascades():
     "raw",
     [
         "[2024]",
+        "［２０２４］",
+        "[０１]",
+        "[０]",
+        "[１-１０００]",
+        "[３-１]",
         "[2024-2025]",
         "[2024-01-01]",
         "[2024/1/1]",
