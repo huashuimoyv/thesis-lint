@@ -7,6 +7,7 @@ from docx import Document
 
 from thesislint import gui
 from thesislint.cli import analyze, main
+from thesislint.fixer import fix_entries
 from thesislint.report import build_json_report, build_markdown_report, build_text_report
 
 
@@ -106,3 +107,38 @@ def test_missing_bibliography_does_not_claim_citation_check_completed(tmp_path):
     assert not report.citations.checked
     assert not report.citations.issues
     assert not json.loads(build_json_report(report))["citations"]["checked"]
+
+
+@pytest.mark.parametrize("layout", ["paragraphs", "manual_break", "table_columns"])
+def test_fullwidth_reference_numbers_stay_separate_and_keep_citation_mapping(tmp_path, layout):
+    entries = [
+        "[1] 张三. 文一[J]. 学报, 2024.",
+        "［２］ 李四. 文二[J]. 学报, 2023.",
+    ]
+    doc = Document()
+    doc.add_paragraph("正文[1]［２］。")
+    doc.add_heading("参考文献", level=1)
+    if layout == "table_columns":
+        table = doc.add_table(rows=1, cols=2)
+        for cell, entry in zip(table.rows[0].cells, entries, strict=True):
+            cell.text = entry
+    elif layout == "manual_break":
+        doc.add_paragraph("\n".join(entries))
+    else:
+        for entry in entries:
+            doc.add_paragraph(entry)
+    path = tmp_path / "fullwidth-numbers.docx"
+    doc.save(path)
+    original = path.read_bytes()
+
+    report = analyze(path)
+
+    assert [entry.text for entry in report.entries] == entries
+    assert report.citations.checked
+    assert report.citations.issues == []
+    assert [(issue.level, issue.code) for issue in report.entries[1].issues] == [("ERROR", "E001")]
+    fixed = fix_entries(entries, renumber=False)
+    assert fixed["lines"] == [entries[0], "[２] 李四. 文二[J]. 学报, 2023."]
+    assert not fixed["summary"]["renumbered"]
+    assert fixed["summary"]["manual_needed"] == 0
+    assert path.read_bytes() == original

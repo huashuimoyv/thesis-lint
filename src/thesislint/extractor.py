@@ -16,7 +16,7 @@ from docx.oxml.text.paragraph import CT_P
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
-from .patterns import TAG_RE
+from .patterns import NUM_RE, NUMBER_MARKER, TAG_RE
 
 # 常见的中断章节标题，匹配到即认为参考文献部分结束
 _SECTION_STOP = re.compile(
@@ -25,10 +25,12 @@ _SECTION_STOP = re.compile(
 
 _HEADING_HINT = re.compile(r"heading|标题", re.IGNORECASE)
 _HEADING_LEVEL = re.compile(r"(?:heading|标题)\s*([1-9])", re.IGNORECASE)
-_ENTRY_START = re.compile(r"^\[(\d+)\]\s*(.*)$")
-_ENTRY_BREAK = re.compile(r"[\r\n]+(?=[^\S\r\n]*\[\d+\])")
+_ENTRY_START = NUM_RE
+_ENTRY_BREAK = re.compile(rf"[\r\n]+(?=[^\S\r\n]*{NUMBER_MARKER})")
 _TABLE_HEADER = re.compile(r"^(?:序号|编号)\s*(?:参考文献|文献(?:名称|条目)?)$")
-_TEXT_CONTAINERS = {qn(tag) for tag in ("w:r", "w:hyperlink", "w:fldSimple")}
+_TEXT_CONTAINERS = {
+    qn(tag) for tag in ("w:r", "w:hyperlink", "w:fldSimple", "w:sdt", "w:sdtContent")
+}
 _TEXT_ELEMENTS = {qn(tag) for tag in ("w:t", "w:tab", "w:ptab", "w:br", "w:cr", "w:noBreakHyphen")}
 
 
@@ -51,7 +53,8 @@ def _paragraph_block(paragraph, fields: list[bool]):
             elif child.tag in _TEXT_CONTAINERS:
                 read(child)
             elif child.tag in _TEXT_ELEMENTS and all(fields):
-                parts.append(str(child))
+                # 手动分页/分栏也分隔文本；python-docx 对这两类 w:br 返回空串。
+                parts.append("\n" if child.tag == qn("w:br") else str(child))
 
     read(paragraph._p)
     return SimpleNamespace(text="".join(parts), style=paragraph.style)
@@ -87,7 +90,7 @@ def _paragraph_text(paragraph) -> str:
 
 
 def _section_heading_pattern(section_keyword: str) -> re.Pattern[str] | None:
-    keyword = section_keyword.strip()
+    keyword = "".join(section_keyword.split())
     if not keyword:
         return None
     spaced_keyword = r"\s*".join(map(re.escape, keyword))
@@ -180,13 +183,24 @@ def find_bibliography(paragraphs, section_keyword: str = "参考文献") -> Bibl
     return result
 
 
+def _iter_block_elements(parent):
+    """按顺序展开块级内容控件，只读取其已保存的显示内容。"""
+    for child in parent.iterchildren():
+        if child.tag == qn("w:sdt"):
+            content = child.find(qn("w:sdtContent"))
+            if content is not None:
+                yield from _iter_block_elements(content)
+        else:
+            yield child
+
+
 def _iter_document_blocks(document, section_keyword: str = "参考文献"):
     """按 Word 正文顺序产出段落和表格行。"""
     keyword_re = _section_heading_pattern(section_keyword)
     in_bibliography = False
     section_level = None
     fields: list[bool] = []
-    for child in document.element.body.iterchildren():
+    for child in _iter_block_elements(document.element.body):
         if isinstance(child, CT_P):
             paragraph = _paragraph_block(Paragraph(child, document), fields)
             if _is_section_heading(paragraph, keyword_re):
@@ -206,8 +220,13 @@ def _iter_document_blocks(document, section_keyword: str = "参考文献"):
                         continue
                     seen_cells.add(cell._tc)
                     # 表格仍位于正文顺序中，域的开始/分隔/结束状态须跨单元格传播。
+                    paragraphs = (
+                        Paragraph(element, cell)
+                        for element in _iter_block_elements(cell._tc)
+                        if isinstance(element, CT_P)
+                    )
                     cell_text = "\n".join(
-                        _paragraph_block(paragraph, fields).text for paragraph in cell.paragraphs
+                        _paragraph_block(paragraph, fields).text for paragraph in paragraphs
                     ).strip()
                     if cell_text:
                         parts.append(cell_text)
@@ -234,5 +253,8 @@ def _iter_document_blocks(document, section_keyword: str = "参考文献"):
 
 
 def find_bibliography_in_document(document, section_keyword: str = "参考文献") -> Bibliography:
-    """从 ``python-docx`` 文档正文和表格中提取参考文献。"""
+    """从文档正文和表格提取文献，并展开其块级内容控件。
+
+    调用方应传入完整 Document；Document.paragraphs 不包含控件包裹的段落。
+    """
     return find_bibliography(_iter_document_blocks(document, section_keyword), section_keyword)

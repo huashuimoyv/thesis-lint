@@ -133,7 +133,8 @@ def build_markdown_report(report: Report) -> str:
 
     rows = ["| 条目 | 文档块 | 级别 | 问题 |", "|---|---|---|---|"]
     for entry in report.entries:
-        text = _markdown_cell(entry.text[:40])
+        excerpt = entry.text[:40] + ("…" if len(entry.text) > 40 else "")
+        text = _markdown_cell(excerpt)
         for issue in entry.issues:
             rows.append(
                 f"| [{entry.index}] {text} | {entry.line} | {issue.level} | {issue.code} {_markdown_cell(issue.message)} |"

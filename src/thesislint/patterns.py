@@ -12,8 +12,12 @@ import re
 
 # ---- 条目结构 ----
 TAG_RE = re.compile(r"\[([A-Z]{1,2}(?:/[A-Z]{1,2})?)\]")
-NUM_RE = re.compile(r"^\[(\d+)\]\s*(.*)$")
+# 结构识别保留成对全角方括号；是否符合编号格式由 checker 单独判断。
+NUMBER_MARKER = r"(?:\[\d+\]|［\d+］)"
+NUM_RE = re.compile(rf"^(?={NUMBER_MARKER})[\[［](\d+)[\]］]\s*(.*)$", re.DOTALL)
 AUTHOR_TITLE_SEPARATOR_RE = re.compile(r"\.(?=\s)")
+# 自动缩略仅识别常见短中文姓名和“西文大写姓 + 名首字母”。
+PERSONAL_AUTHOR_RE = re.compile(r"(?:[\u4e00-\u9fff]{2,4}|[A-Z]+(?:[-'][A-Z]+)*(?:\s+[A-Z]){1,4})")
 
 
 def author_zone_bounds(text: str) -> tuple[int, int] | None:

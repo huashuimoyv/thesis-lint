@@ -136,6 +136,19 @@ class TestExtractor:
         paras = fake_paragraphs(("参考文献", True))
         assert not find_bibliography(paras, "").found
 
+    @pytest.mark.parametrize(
+        "keyword,heading",
+        [("  Selected \t References  ", "Selected References"), ("参　考 文\n献", "参考文献")],
+    )
+    def test_custom_keyword_spacing_matches_normalized_heading(self, keyword, heading):
+        entry = "[1] 张三. 文献[J]. 学报, 2024."
+        bib = find_bibliography(
+            fake_paragraphs((heading, False), (entry, False), ("致谢", False)), keyword
+        )
+        assert bib.found
+        assert bib.entries == [entry]
+        assert bib.heading_text == heading
+
     def test_multiple_entries_in_one_paragraph(self):
         paras = fake_paragraphs(
             ("参考文献", True),

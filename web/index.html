@@ -563,7 +563,11 @@ def web_fix(filename: str) -> str:
       setStage(`正在检查 ${file.name} …`);
       const buf = new Uint8Array(await file.arrayBuffer());
       py.FS.writeFile(file.name, buf);
-      await present(py, file.name);
+      try {
+        await present(py, file.name);
+      } finally {
+        py.FS.unlink(file.name);
+      }
     } catch (err) {
       lastFilename = null;
       setStage("❌ 检查失败：" + (err.message || err), false);

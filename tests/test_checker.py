@@ -1,5 +1,7 @@
 """checker 规则单元测试。"""
 
+import pytest
+
 from thesislint.checker import ERROR, WARN, check_entries, check_entry
 
 
@@ -43,6 +45,42 @@ class TestErrors:
 
 
 class TestWarnings:
+    @pytest.mark.parametrize(
+        "authors",
+        [
+            "World Health Organization",
+            "National Cancer Institute",
+            "United States, Department of Health and Human Services, National Institutes of Health, National Cancer Institute",
+            "SMITH J, LEE B, WANG W, World Health Organization",
+            "张三，李四，王五，中国医学科学院",
+        ],
+    )
+    def test_institution_author_groups_do_not_trigger_personal_name_rules(self, authors):
+        entry = f"[1] {authors}. Report[J]. Journal, 2024."
+
+        codes = {issue.code for issue in check_entry(entry)}
+
+        assert not {"W003", "W004"}.intersection(codes)
+        if "，" in authors:
+            assert "W005" in codes
+
+    @pytest.mark.parametrize(
+        "authors,expected",
+        [
+            ("SMITH J, LEE B, WANG W, ZHANG S", {"W003"}),
+            ("Vaswani A, Shazeer N, Parmar J, Hinton G", {"W003"}),
+            ("Smith John, Brown James, White Alice, Green David", {"W003", "W004"}),
+            ("Smith John, Brown James, White Alice, et al", {"W004"}),
+            ("张三，李四，王五，赵六", {"W003"}),
+        ],
+    )
+    def test_personal_author_groups_keep_relevant_warnings(self, authors, expected):
+        entry = f"[1] {authors}. Report[J]. Journal, 2024."
+
+        codes = {issue.code for issue in check_entry(entry)}
+
+        assert codes.intersection({"W003", "W004"}) == expected
+
     def test_too_many_authors_without_et_al(self):
         entry = "[1] 张三, 李四, 王五, 赵六. 论文名称[J]. 学报, 2024, 1(1): 1-9."
         codes = [i.code for i in check_entry(entry)]

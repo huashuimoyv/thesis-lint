@@ -52,6 +52,45 @@ def test_multiple_locators_and_missing_final_period_are_preserved():
 
 
 @pytest.mark.parametrize(
+    "authors",
+    [
+        "United States, Department of Health and Human Services, National Institutes of Health, National Cancer Institute",
+        "SMITH J, LEE B, WANG W, World Health Organization",
+        "张三, 李四, 王五, 中国医学科学院",
+    ],
+)
+def test_ambiguous_institution_authors_are_not_truncated(authors):
+    original = f"[1] {authors}. Research[J]. Journal, 2024."
+
+    result = fix_entries([original])
+
+    assert result["lines"] == [original]
+    assert result["summary"]["auto_fixed"] == 0
+    assert result["summary"]["manual_needed"] == 1
+    assert any("作者" in message for message in result["results"][0].unresolved)
+
+
+def test_clear_western_initial_authors_can_still_be_shortened():
+    original = "[1] SMITH J A, LEE B, WANG W, ZHANG S. Research[J]. Journal, 2024."
+
+    result = fix_entry(original, 1)
+
+    assert result.fixed == "[1] SMITH J A, LEE B, WANG W, 等. Research[J]. Journal, 2024."
+    assert result.unresolved == []
+
+
+def test_full_given_names_are_warned_but_not_automatically_shortened():
+    original = "[1] Smith John, Brown James, White Alice, Green David. Research[J]. Journal, 2024."
+
+    result = fix_entry(original, 1)
+
+    assert result.fixed == original
+    assert result.fixes == []
+    assert any("作者" in message for message in result.unresolved)
+    assert {issue.code for issue in check_entry(result.fixed)} == {"W003", "W004"}
+
+
+@pytest.mark.parametrize(
     "original",
     [
         "[1] SMITH J. Resource[EB/OL]. (2024-01-01)[2024-02-01]. https://example.org/range:10~20.",
@@ -86,6 +125,38 @@ def test_page_correction_changes_only_pages_and_is_idempotent(separator, number)
 
 
 class TestSingleEntryFixes:
+    @pytest.mark.parametrize("marker", ["[7］", "［7]", "［］", "［七］"])
+    @pytest.mark.parametrize("renumber", [False, True])
+    def test_invalid_number_marker_is_not_guessed(self, marker, renumber):
+        original = f"{marker} SMITH J. Title[J]. Journal, 2024."
+
+        assert parse_reference(original).number is None
+        batch = fix_entries([original], renumber=renumber)
+        result = batch["results"][0]
+
+        assert result.fixed == original
+        assert batch["summary"]["auto_fixed"] == 0
+        assert batch["summary"]["manual_needed"] == 1
+        assert not batch["summary"]["renumbered"]
+        assert any("序号" in message for message in result.unresolved)
+        assert any(issue.code == "E001" for issue in check_entry(result.fixed))
+
+    @pytest.mark.parametrize("renumber", [False, True])
+    @pytest.mark.parametrize("marker", ["[7]", "［7］"])
+    def test_multiline_numbered_entry_is_not_prefixed_twice(self, renumber, marker):
+        body = "SMITH J. Title[J].\nJournal, 2024: 1-9."
+        original = f"{marker} {body}"
+
+        assert parse_reference(original).number == 7
+        assert parse_reference(original).body == body
+        assert any(issue.code == "E001" for issue in check_entry(original)) == (marker == "［7］")
+        result = fix_entry(original, 1, renumber=renumber)
+
+        assert result.fixed == f"[{1 if renumber else 7}] {body}"
+        assert "补齐条目序号" not in result.fixes
+        assert not any(issue.code == "E001" for issue in check_entry(result.fixed))
+        assert fix_entry(result.fixed, 1, renumber=renumber).fixed == result.fixed
+
     def test_fullwidth_punctuation_fixed(self):
         r = fix_entry("[3] 张三，李四. 论文[J]. 学报，2024，47（3）：100-110.", 3)
         assert r.fixed == "[3] 张三, 李四. 论文[J]. 学报, 2024, 47(3): 100-110."

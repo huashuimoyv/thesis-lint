@@ -132,6 +132,22 @@ def test_web_fix_preserves_displayed_citations_after_file_changes(
     assert "后来修改" in next_result["lines"][-1]
 
 
+def test_web_fix_uses_snapshot_after_virtual_input_is_removed(tmp_path, web_backend):
+    path = tmp_path / "temporary-upload.docx"
+    document = Document()
+    document.add_paragraph("正文引用[4]。")
+    document.add_heading("参考文献", level=1)
+    document.add_paragraph("[4] 张三. 文献[J]. 学报, 2024")
+    document.save(path)
+    web_backend["web_check"](str(path))
+    path.unlink()
+
+    result = json.loads(web_backend["web_fix"](str(path)))
+
+    assert result["preserve_numbers"] is True
+    assert result["lines"] == ["[4] 张三. 文献[J]. 学报, 2024."]
+
+
 def test_web_failed_check_cannot_reuse_previous_snapshot(tmp_path, web_backend):
     path = str(tmp_path / "示例.docx")
     web_backend["web_demo"](path)

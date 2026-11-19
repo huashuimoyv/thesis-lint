@@ -66,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
         description="毕业论文「国标体检」：检查 Word 文档参考文献是否符合 GB/T 7714-2025",
     )
     parser.add_argument("docx", type=Path, nargs="?", help="待检查的 .docx 文件")
-    parser.add_argument("--section", default="参考文献", help="章节标题关键词（默认“参考文献”）")
+    parser.add_argument("--section", default="参考文献", help="参考文献章节标题（默认“参考文献”）")
     parser.add_argument("--format", choices=["text", "md", "json"], default="text", help="输出格式")
     parser.add_argument("--strict", action="store_true", help="存在警告时同样返回非零退出码")
 

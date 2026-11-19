@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 
@@ -38,6 +39,18 @@ def _make_docx(path, entries: list[str], heading: str = "参考文献"):
 
 
 class TestExitCodes:
+    def test_institution_author_passes_strict_without_changing_source(self, tmp_path, capsys):
+        entry = "[1] World Health Organization. Global health report[R]. Geneva, 2024."
+        path = _make_docx(tmp_path / "institution.docx", [entry])
+        original = path.read_bytes()
+
+        assert main([str(path), "--strict", "--format", "json"]) == 0
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["entries"][0]["text"] == entry
+        assert data["warn_count"] == 0
+        assert path.read_bytes() == original
+
     def test_clean_doc_returns_zero(self, tmp_path):
         path = _make_docx(
             tmp_path / "clean.docx",

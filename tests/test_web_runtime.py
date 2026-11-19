@@ -138,3 +138,70 @@ def test_copy_actions_handle_unavailable_or_denied_clipboard(button, next_button
     else:
         assert "复制失败，请手动选择" in result["messages"][0]["text"]
         assert result["copied"] == []
+
+
+UPLOAD_HOST = r"""
+const vm = require('node:vm');
+const input = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+const files = new Map([['runtime.txt', 'keep']]);
+const removed = [], messages = [], checked = [];
+let attempt = 0;
+const py = {FS: {
+  writeFile: (name, bytes) => files.set(name, Array.from(bytes)),
+  unlink: name => {
+    if (!files.delete(name)) throw Error('missing temporary input');
+    removed.push(name);
+  }
+}};
+const host = {busy: false, lastFilename: null, Uint8Array,
+  beginWork: () => {}, setButtons: () => {},
+  setStage: text => messages.push(text), console: {error: () => {}},
+  getEngine: async () => {
+    if (attempt === 0 && input.mode === 'engine') throw Error('engine unavailable');
+    return py;
+  },
+  present: async (_, name) => {
+    if (!files.has(name)) throw Error('input removed before parsing');
+    if (attempt === 0 && input.mode === 'parse') throw Error('bad document');
+    checked.push({name, bytes: files.get(name)});
+  }
+};
+vm.runInNewContext(input.source, host);
+(async () => {
+  for (attempt = 0; attempt < 2; attempt++) {
+    await host.checkFile({name: `${attempt}.docx`, arrayBuffer: async () => {
+      if (attempt === 0 && input.mode === 'read') throw Error('read failed');
+      return new Uint8Array([1, 2, 3]).buffer;
+    }});
+  }
+  process.stdout.write(JSON.stringify({files: [...files], removed, checked,
+    messages, busy: host.busy, lastFilename: host.lastFilename}));
+})().catch(error => {process.stderr.write(String(error)); process.exitCode = 1;});
+"""
+
+
+@pytest.mark.parametrize("mode", ["success", "parse", "read", "engine"])
+def test_upload_releases_virtual_input_and_can_check_another_document(mode):
+    source = (
+        "  async function checkFile("
+        + HTML.split("  async function checkFile(", 1)[1].split("  async function checkDemo(", 1)[0]
+    )
+    completed = subprocess.run(
+        [NODE, "-e", UPLOAD_HOST],
+        input=json.dumps({"source": source, "mode": mode}),
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=True,
+        timeout=10,
+    )
+    result = json.loads(completed.stdout)
+    assert result["files"] == [["runtime.txt", "keep"]]
+    assert result["removed"] == (
+        ["0.docx", "1.docx"] if mode in ("success", "parse") else ["1.docx"]
+    )
+    assert result["checked"][-1] == {"name": "1.docx", "bytes": [1, 2, 3]}
+    assert len(result["checked"]) == (2 if mode == "success" else 1)
+    assert result["busy"] is False
+    assert result["lastFilename"] == "1.docx"
+    assert any("检查失败" in message for message in result["messages"]) is (mode != "success")

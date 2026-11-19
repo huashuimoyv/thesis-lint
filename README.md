@@ -7,7 +7,7 @@ _毕业论文「国标体检」工具_
 **让每一篇 Word 论文的参考文献，都经得起 GB/T 7714-2025 的检验**
 
 [![Release](https://img.shields.io/github/v/release/huashuimoyv/thesis-lint?style=flat-square&label=%E6%9C%80%E6%96%B0%E7%89%88)](https://github.com/huashuimoyv/thesis-lint/releases)
-[![CI](https://img.shields.io/github/actions/workflow/status/huashuimoyv/thesis-lint/ci.yml?branch=main&style=flat-square&label=CI)](./actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/huashuimoyv/thesis-lint/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/huashuimoyv/thesis-lint/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg?style=flat-square)](pyproject.toml)
 
@@ -25,6 +25,8 @@ _毕业论文「国标体检」工具_
 
 </div>
 
+各版本的功能和修复见[更新日志](CHANGELOG.md)。Windows 便携版可从 [Releases](https://github.com/huashuimoyv/thesis-lint/releases) 下载。
+
 ---
 
 ## 🤔 为什么需要它
@@ -34,7 +36,7 @@ _毕业论文「国标体检」工具_
 
 | | 肉眼检查 | 🔬 thesis-lint |
 |---|---|---|
-| 检查 40 条参考文献耗时 | 30 分钟起，还容易漏 | **3 秒，一条不落** |
+| 逐条检查参考文献 | 手动对照，容易遗漏 | 自动提取并逐条检查，报告支持的格式问题 |
 | 全角标点、缺句点这类隐形问题 | 全靠眼力 | ✅ 自动识别 |
 | 作者 "等"/"et al." 缩略规则 | 很多人不知道有这规定 | ✅ 给出国标条款 |
 | 结果可复现 | 看一遍忘一遍 | 报告可存档、可进 CI |
@@ -72,6 +74,8 @@ flowchart LR
 
 修正列表以当前检查报告为准，不会修改原文档。如果检查后又在 Word 中编辑了论文，请重新检查后再生成修正列表。
 网址和 DOI 内的全角字符会保留并提示人工核对，避免自动修正改变资源地址。
+作者自动缩略仅处理常见短中文姓名或“西文姓 + 名首字母”列表；长名称及可能包含机构的列表保留并提示人工确认。
+作者人数与西文姓名提醒仅在整组符合常见个人姓名结构时给出；含机构或无法识别的姓名组合需人工核对。短机构名仍可能与人名混淆。
 文档含正文时，修正列表保留已有文献编号；缺号、重号和正文对应关系需人工处理，替换列表后请重新检查整篇论文。
 v0.8.0 起，桌面导出会拦截覆盖 Word 文档或原论文的目标，请另存为 Markdown/TXT。剪贴板不可用时会提示重试或导出，已有报告和修正列表保留。
 
@@ -95,11 +99,16 @@ thesislint 论文.docx --section Bibliography  # 指定参考文献章节标题
 
 退出码：`0` 完成检查且无错误 · `1` 有错误 · `2` 文件/用法问题或没有可检查的参考文献 —— 可直接作为提交前检查。
 
+`--section` 指定完整章节标题（含空格时加引号，如 `--section "Selected References"`）；标题中的空白差异会被忽略。
+
+Markdown 表格展示文献摘要，较长条目以省略号标记。需要完整条目文本时，可使用 `--format json`。
+
 </details>
 
 ## 🩺 规则总览
 
 支持正文段落与 Word 表格中的参考文献，并按文档顺序检查。同一行中分散在多列的文献内容会合并；若多列分别以 `[n]` 开头，则按独立文献提取。同一段落或单元格内换行后以 `[n]` 开头时按新条目检查，普通折行仍合并到上一条。
+手动分页、分栏后的新编号也按独立条目提取；可读取段落内内容控件，以及包裹正文段落、正文表格或单元格内段落的内容控件。嵌套表格暂不纳入检查。
 如果没有找到参考文献章节，或章节内没有可提取的文本，工具会明确提示“未完成检查”，不会把 0 条文献显示为通过。
 
 | 级别 | 规则 | 示例 |
@@ -126,6 +135,7 @@ thesislint 论文.docx --section Bibliography  # 指定参考文献章节标题
 
 正文核对识别参考文献章节之前普通段落及表格内 1–999 的数字方括号引用，如 `[1][2]`、`[1,3-5]`，也支持中文逗号、全角数字及方括号，如 `［１，２－３］`。定位以提取顺序中的文档块为单位，不是 Word 页码或屏幕行号；正文表格按行计数，文献表中一行的多条文献可能拆成多个块。
 JSON 为兼容现有调用方保留 `line` 字段名，其含义也是从 1 开始的文档块序号。
+文献表中的成对全角编号（如 `［２］`）也会单独提取并参与引用核对，原文保留在报告中；括号格式仍提示 E001，生成修正列表时改为半角方括号，有正文时不改变编号数值。
 没有识别到引用、缺少参考文献章节或文献编号无法可靠对应时，报告会注明正文核对未完成，不会把整份文献表判成未引用。核对不包含脚注、尾注、文本框、图片以及作者—年份式引用；数字方括号也可能是数学表达式，因此新增问题均为供人工确认的警告，`--strict` 会将这些警告视为失败。
 
 ## 🗺 Roadmap

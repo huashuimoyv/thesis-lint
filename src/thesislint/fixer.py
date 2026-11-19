@@ -19,6 +19,7 @@ from .patterns import (
     FULLWIDTH_TRANS,
     LOCATOR_RE,
     NUM_RE,
+    PERSONAL_AUTHOR_RE,
     TAG_RE,
     URL_RE,
     author_zone_bounds,
@@ -46,10 +47,15 @@ def fix_entry(text: str, new_index: int, *, renumber: bool = True) -> EntryFix:
 
     # 1. 文档含正文时保留原序号，避免只替换文献表后引用对应关系改变。
     num_m = NUM_RE.match(work)
-    if not renumber:
+    if num_m and work.startswith("［"):
+        work = f"[{num_m.group(1)}] {num_m.group(2)}"
+        fixes.append("序号方括号改为半角")
+    if not num_m and work.startswith(("[", "［")):
+        unresolved.append("开头的方括号内容无法识别为有效序号，请人工确认")
+    elif not renumber:
         if not num_m:
             unresolved.append("缺少条目序号，请结合正文引用人工补充")
-        elif num_m.group(1) != str(new_index):
+        elif int(num_m.group(1)) != new_index:
             unresolved.append("保留原序号，请结合正文引用人工核对文献排列顺序")
     elif not num_m:
         work = f"[{new_index}] {work}"
@@ -96,11 +102,13 @@ def fix_entry(text: str, new_index: int, *, renumber: bool = True) -> EntryFix:
         has_et_al = ("等" in zone) or ("et al" in zone.lower())
         if not has_et_al:
             parts = [p.strip() for p in _AUTHOR_SPLIT_RE.split(zone) if p.strip()]
-            # 作者区已由“作者. 题名”分隔符限定；每段仍须像短作者名才自动修改。
-            if len(parts) >= 4 and all(len(p) <= 40 for p in parts):
-                new_zone = ", ".join(parts[:3]) + ", 等"
-                work = work[: bounds[0]] + new_zone + work[bounds[1] :]
-                fixes.append("作者超过 3 人，截断为前 3 名并加 “, 等”")
+            if len(parts) >= 4:
+                if all(PERSONAL_AUTHOR_RE.fullmatch(part) for part in parts):
+                    new_zone = ", ".join(parts[:3]) + ", 等"
+                    work = work[: bounds[0]] + new_zone + work[bounds[1] :]
+                    fixes.append("作者超过 3 人，截断为前 3 名并加 “, 等”")
+                else:
+                    unresolved.append("作者信息可能含机构名称，已保留原文，请人工确认是否需要缩略")
 
     # 5. 检查无法自动解决的问题（与 checker 的 ERROR 对应）
     tag_match = TAG_RE.search(work)

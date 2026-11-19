@@ -197,3 +197,16 @@ def test_rendered_markdown_preserves_literal_text_and_table_columns(original):
     assert rendered.cells[-1] == f"S001 {original}"
     assert rendered.headings == [f"参考文献体检报告：{source}"]
     assert not {"a", "img", "i", "b", "em", "script"}.intersection(rendered.tags)
+
+
+@pytest.mark.parametrize("length", [39, 40, 41])
+def test_long_reference_excerpt_marks_truncation_without_changing_json(length):
+    original = "文" * length
+    report = Report(source="sample.docx", found_section=True)
+    report.entries = [EntryResult(1, 3, original, [Issue("WARN", "W006", "缺少句点")])]
+
+    rendered = _RenderedReport(build_markdown_report(report))
+
+    expected = original if length <= 40 else original[:40] + "…"
+    assert rendered.cells[0] == f"[1] {expected}"
+    assert json.loads(build_json_report(report))["entries"][0]["text"] == original

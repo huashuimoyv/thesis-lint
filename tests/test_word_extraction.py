@@ -2,6 +2,7 @@
 
 import pytest
 from docx import Document
+from docx.enum.text import WD_BREAK
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
@@ -42,6 +43,201 @@ def _simple_field(parent, text):
     _run(field, text)
     parent.append(field)
     return field
+
+
+def _inline_content_control(parent, text):
+    control = OxmlElement("w:sdt")
+    properties = OxmlElement("w:sdtPr")
+    alias = OxmlElement("w:alias")
+    alias.set(qn("w:val"), "控件属性不是正文[99]")
+    properties.append(alias)
+    control.append(properties)
+    content = OxmlElement("w:sdtContent")
+    _run(content, text)
+    control.append(content)
+    parent.append(control)
+
+
+def _wrap_blocks_in_content_control(*elements):
+    parent = elements[0].getparent()
+    control = OxmlElement("w:sdt")
+    properties = OxmlElement("w:sdtPr")
+    alias = OxmlElement("w:alias")
+    alias.set(qn("w:val"), "控件属性不是正文[99]")
+    properties.append(alias)
+    control.append(properties)
+    content = OxmlElement("w:sdtContent")
+    control.append(content)
+    parent.insert(parent.index(elements[0]), control)
+    for element in elements:
+        content.append(element)
+    return control
+
+
+@pytest.mark.parametrize("references_in_table", [False, True])
+@pytest.mark.parametrize("nested_control", [False, True])
+def test_block_content_controls_preserve_section_order_and_positions(
+    tmp_path, references_in_table, nested_control
+):
+    document = Document()
+    document.add_paragraph("普通正文[1]。")
+    body = document.add_paragraph("控件正文[2]。")
+    _wrap_blocks_in_content_control(body._p)
+    heading = document.add_heading("参考文献", level=1)
+    if references_in_table:
+        table = document.add_table(rows=2, cols=1)
+        for number, row in enumerate(table.rows, 1):
+            row.cells[0].text = _entry(number)
+        reference_elements = [table._tbl]
+    else:
+        reference_elements = [document.add_paragraph(_entry(number))._p for number in (1, 2)]
+    end = document.add_heading("致谢", level=1)
+    document.add_paragraph("[3] 不属于参考文献的内容")
+    control = _wrap_blocks_in_content_control(heading._p, *reference_elements, end._p)
+    if nested_control:
+        _wrap_blocks_in_content_control(control)
+
+    bib = find_bibliography_in_document(_reload(document, tmp_path))
+
+    assert bib.found
+    assert bib.heading_text == "参考文献"
+    assert bib.body_paragraphs == ["普通正文[1]。", "控件正文[2]。"]
+    assert bib.entries == [_entry(1), _entry(2)]
+    assert bib.line_numbers == [4, 5]
+    assert check_citations(bib).checked
+    assert check_citations(bib).issues == []
+
+
+def test_complex_field_state_crosses_block_content_control(tmp_path):
+    document = Document()
+    start = document.add_paragraph()
+    _field_marker(start._p, "begin")
+    _run(start._p, " REF [99] ", "w:instrText")
+    middle = document.add_paragraph()
+    middle.add_run("[98]")
+    _wrap_blocks_in_content_control(middle._p)
+    end = document.add_paragraph()
+    _field_marker(end._p, "separate")
+    end.add_run("[1]")
+    _field_marker(end._p, "end")
+    end.add_run("[2]")
+    document.add_heading("参考文献", level=1)
+    for number in (1, 2):
+        document.add_paragraph(_entry(number))
+
+    bib = find_bibliography_in_document(_reload(document, tmp_path))
+
+    assert bib.body_paragraphs == ["", "", "[1][2]"]
+    assert bib.line_numbers == [5, 6]
+    assert check_citations(bib).issues == []
+
+
+def test_cell_block_content_control_keeps_entry_breaks_without_reading_nested_tables(tmp_path):
+    document = Document()
+    document.add_paragraph("正文[1,2]。")
+    document.add_heading("参考文献", level=1)
+    cell = document.add_table(rows=1, cols=1).cell(0, 0)
+    cell.paragraphs[0].text = _entry(1) + "\n" + _entry(2)
+    _wrap_blocks_in_content_control(cell.paragraphs[0]._p)
+    cell.add_table(rows=1, cols=1).cell(0, 0).text = _entry(99)
+
+    bib = find_bibliography_in_document(_reload(document, tmp_path))
+
+    assert bib.entries == [_entry(1), _entry(2)]
+    assert bib.line_numbers == [3, 3]
+    assert check_citations(bib).issues == []
+
+
+def test_cell_block_content_control_preserves_hidden_field_state(tmp_path):
+    document = Document()
+    start = document.add_paragraph()
+    _field_marker(start._p, "begin")
+    table = document.add_table(rows=1, cols=2)
+    first = table.cell(0, 0).paragraphs[0]
+    first.add_run("[99]")
+    _wrap_blocks_in_content_control(first._p)
+    second = table.cell(0, 1).paragraphs[0]
+    _field_marker(second._p, "separate")
+    second.add_run("[1]")
+    _field_marker(second._p, "end")
+    second.add_run("[2]")
+    document.add_heading("参考文献", level=1)
+    for number in (1, 2):
+        document.add_paragraph(_entry(number))
+
+    bib = find_bibliography_in_document(_reload(document, tmp_path))
+
+    assert bib.body_paragraphs == ["", "[1][2]"]
+    assert check_citations(bib).issues == []
+
+
+@pytest.mark.parametrize("in_table", [False, True])
+def test_inline_content_control_text_is_preserved_in_body_and_references(tmp_path, in_table):
+    document = Document()
+    paragraph = (
+        document.add_table(rows=1, cols=1).cell(0, 0).paragraphs[0]
+        if in_table
+        else document.add_paragraph()
+    )
+    paragraph.add_run("普通引用[1]，控件引用")
+    _inline_content_control(paragraph._p, "[2]")
+    document.add_heading("参考文献", level=1)
+    document.add_paragraph(_entry(1))
+    _inline_content_control(document.add_paragraph()._p, _entry(2))
+
+    bib = find_bibliography_in_document(_reload(document, tmp_path))
+
+    assert bib.body_paragraphs == ["普通引用[1]，控件引用[2]"]
+    assert bib.entries == [_entry(1), _entry(2)]
+    assert bib.line_numbers == [3, 4]
+    assert check_citations(bib).issues == []
+
+
+def test_content_control_inside_field_instructions_is_not_visible_text(tmp_path):
+    document = Document()
+    paragraph = document.add_paragraph()
+    _field_marker(paragraph._p, "begin")
+    _inline_content_control(paragraph._p, "[99]")
+    _field_marker(paragraph._p, "separate")
+    _inline_content_control(paragraph._p, "[1]")
+    _field_marker(paragraph._p, "end")
+    document.add_heading("参考文献", level=1)
+    document.add_paragraph(_entry(1))
+
+    bib = find_bibliography_in_document(_reload(document, tmp_path))
+
+    assert bib.body_paragraphs == ["[1]"]
+    assert check_citations(bib).issues == []
+
+
+@pytest.mark.parametrize("break_type", [WD_BREAK.PAGE, WD_BREAK.COLUMN])
+def test_explicit_break_keeps_numbered_references_separate(tmp_path, break_type):
+    document = Document()
+    document.add_paragraph("正文引用[1,2]。")
+    document.add_heading("参考文献", level=1)
+    paragraph = document.add_paragraph(_entry(1))
+    paragraph.add_run().add_break(break_type)
+    paragraph.add_run(_entry(2))
+    reloaded = _reload(document, tmp_path)
+
+    bib = find_bibliography_in_document(reloaded)
+
+    assert bib.entries == [_entry(1), _entry(2)]
+    assert bib.line_numbers == [3, 3]
+    assert check_citations(bib).issues == []
+    assert find_bibliography(reloaded.paragraphs).entries == bib.entries
+
+
+def test_automatic_page_marker_does_not_split_a_word(tmp_path):
+    document = Document()
+    document.add_heading("参考文献", level=1)
+    paragraph = document.add_paragraph("[1] 张三. 文献")
+    paragraph.add_run()._r.append(OxmlElement("w:lastRenderedPageBreak"))
+    paragraph.add_run("题名[J]. 学报, 2024.")
+
+    bib = find_bibliography_in_document(_reload(document, tmp_path))
+
+    assert bib.entries == [_entry(1)]
 
 
 @pytest.mark.parametrize("rows, cols", [(1, 2), (2, 1), (2, 2)])

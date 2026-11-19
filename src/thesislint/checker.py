@@ -15,6 +15,7 @@ from .patterns import (
     CITE_DATE_RE,
     FULLWIDTH_PUNCT,
     NUM_RE,
+    PERSONAL_AUTHOR_RE,
     TAG_RE,
     URL_RE,
     author_zone_bounds,
@@ -22,6 +23,7 @@ from .patterns import (
 
 ERROR = "ERROR"
 WARN = "WARN"
+_FULL_NAME_AUTHOR_RE = re.compile(r"[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}")
 
 # 常用文献类型标识。带载体/OL 的组合形如 [J/OL]，单独放行。
 _SINGLE_TAGS = {
@@ -63,6 +65,8 @@ def check_entry(raw: str) -> list[Issue]:
     if not m:
         issues.append(Issue(ERROR, "E001", "条目应以序号开头，如 “ [1] ”"))
         return issues
+    if text.startswith("［"):
+        issues.append(Issue(ERROR, "E001", "条目序号应使用半角方括号，如 [1]"))
     body = m.group(2).strip()
     fields = parse_reference(text)
 
@@ -90,7 +94,14 @@ def check_entry(raw: str) -> list[Issue]:
     zone = text[bounds[0] : bounds[1]] if bounds else ""
     # “等”与西文惯用的“et al.”均视为已正确缩略作者列表
     has_et_al = ", 等" in zone or "，等" in zone or "et al" in zone.lower()
-    if not has_et_al and zone.count(",") + zone.count("，") >= 3:
+    authors = re.split(r"\s*[,，]\s*", zone.strip())
+    authors = [author for author in authors if author.lower() not in {"等", "et al"}]
+    # 机构层级也可能含逗号；整组不符合个人姓名结构时，不猜人数或要求缩写机构名。
+    personal_authors = all(
+        PERSONAL_AUTHOR_RE.fullmatch(author.upper()) or _FULL_NAME_AUTHOR_RE.fullmatch(author)
+        for author in authors
+    )
+    if personal_authors and not has_et_al and len(authors) >= 4:
         issues.append(
             Issue(
                 WARN,
@@ -98,7 +109,7 @@ def check_entry(raw: str) -> list[Issue]:
                 "作者超过 3 人时应只列前 3 名，后加 “, 等”（GB/T 7714 第 8.1.2 条）",
             )
         )
-    if re.search(r"\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b", zone):
+    if personal_authors and any(_FULL_NAME_AUTHOR_RE.fullmatch(author) for author in authors):
         issues.append(Issue(WARN, "W004", "西文作者应 “姓全大写 + 名首字母缩写”，如 “SMITH J A”"))
 
     if FULLWIDTH_PUNCT.search(body):
