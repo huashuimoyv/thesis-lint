@@ -29,6 +29,8 @@ thesis-lint 便携版（Windows x64，版本号见窗口顶部）
        thesislint.exe 论文.docx                文本格式报告
        thesislint.exe 论文.docx --format md      Markdown 格式报告
        thesislint.exe 论文.docx --format json    JSON 格式报告
+       thesislint.exe 论文.docx --format fixed > 修正后参考文献.txt
+                                               每行一条修正文献，人工核对提示留在终端，退出码按原文判断
        thesislint.exe 论文.docx --strict         有警告时也返回失败码
        thesislint.exe 论文.docx --section Bibliography
                                                使用指定的参考文献章节标题

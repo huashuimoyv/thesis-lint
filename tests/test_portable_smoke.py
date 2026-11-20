@@ -28,8 +28,8 @@ def test_smoke_runs_real_cli_without_gui_and_cleans_synthetic_files(verifier, mo
     monkeypatch.setattr(subprocess, "run", record)
     completed = verifier["verify_portable"](SOURCE_COMMAND)
 
-    assert len(completed) == 7
-    assert len(calls) == 7
+    assert "fixed output" in completed
+    assert len(completed) == len(calls) == 8
     assert all(command[:3] == SOURCE_COMMAND for command, _ in calls)
     assert all("--help" in command or "--format" in command for command, _ in calls)
     assert all(options["timeout"] > 0 for _, options in calls)

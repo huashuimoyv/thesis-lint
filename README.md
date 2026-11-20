@@ -93,6 +93,7 @@ pip install git+https://github.com/huashuimoyv/thesis-lint.git
 thesislint 论文.docx                # 文本报告（默认）
 thesislint 论文.docx --format md    # Markdown 报告，适合贴进 issue / PR
 thesislint 论文.docx --format json  # JSON，方便接入其他工具
+thesislint 论文.docx --format fixed > 修正后参考文献.txt
 thesislint 论文.docx --strict       # CI 中使用：有警告也算失败
 thesislint 论文.docx --section Bibliography  # 指定参考文献章节标题
 ```
@@ -102,6 +103,8 @@ thesislint 论文.docx --section Bibliography  # 指定参考文献章节标题
 `--section` 指定完整章节标题（含空格时加引号，如 `--section "Selected References"`）；标题中的空白差异会被忽略。
 
 Markdown 表格展示文献摘要，较长条目以省略号标记。需要完整条目文本时，可使用 `--format json`。
+
+从 v0.9.0 起，`--format fixed` 可导出与桌面版相同的修正列表。请将输出保存为单独的 `.txt` 文件。人工核对提示留在终端，退出码反映原论文的检查结果。即使已生成可用列表，原文有错误时仍返回 `1`。使用 v0.8.2 便携版时，可通过窗口中的“生成修正后列表”导出。
 
 </details>
 

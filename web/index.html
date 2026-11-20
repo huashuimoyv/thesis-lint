@@ -525,7 +525,7 @@ def web_fix(filename: str) -> str:
     if checked_report is None or checked_filename != filename:
         raise ValueError("请先检查这份文档，再生成修正后列表")
     r = checked_report
-    preserve_numbers = bool(r.citations and (r.citations.has_body or r.citations.citations))
+    preserve_numbers = r.preserve_reference_numbers
     result = fix_entries([e.text for e in r.entries], renumber=not preserve_numbers)
     data = {
         "lines": result["lines"],

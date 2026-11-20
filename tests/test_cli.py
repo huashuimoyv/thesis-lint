@@ -99,6 +99,54 @@ class TestExitCodes:
         assert main([str(path)]) == 1
 
 
+class TestFixedOutput:
+    def test_reference_list_can_be_saved_even_if_source_has_errors(self, tmp_path, capsys):
+        path = _make_docx(tmp_path / "refs.docx", ["张三. 题名[J]. 学报, 2024"], "References")
+        original = path.read_bytes()
+        assert main([str(path), "--section", "References", "--format", "fixed"]) == 1
+        streams = capsys.readouterr()
+        assert streams.out == "[1] 张三. 题名[J]. 学报, 2024.\n"
+        assert "原文" in streams.err and "1 个错误" in streams.err
+        assert path.read_bytes() == original
+
+    @pytest.mark.parametrize("body", ["研究依据见 [4]。", "本文使用作者—年份引用。"])
+    def test_body_protects_numbers_and_manual_notes_go_to_stderr(self, tmp_path, capsys, body):
+        doc = Document()
+        doc.add_paragraph(body)
+        doc.add_heading("参考文献", level=1)
+        doc.add_paragraph("[4] 张三. 题名[J]. 学报, 2024")
+        path = tmp_path / "保留序号.docx"
+        doc.save(path)
+        assert main([str(path), "--format", "fixed"]) == 0
+        streams = capsys.readouterr()
+        assert streams.out == "[4] 张三. 题名[J]. 学报, 2024.\n"
+        assert "第 1 条" in streams.err and "保留原序号" in streams.err
+
+    @pytest.mark.parametrize("strict,expected", [([], 0), (["--strict"], 1)])
+    def test_missing_citation_affects_source_status(self, tmp_path, capsys, strict, expected):
+        doc = Document()
+        doc.add_paragraph("引用[1]和[9]。")
+        doc.add_heading("参考文献", level=1)
+        entry = "[1] 张三. 题名[J]. 学报, 2024."
+        doc.add_paragraph(entry)
+        path = tmp_path / "citation.docx"
+        doc.save(path)
+        assert main([str(path), "--format", "fixed", *strict]) == expected
+        streams = capsys.readouterr()
+        assert streams.out == entry + "\n"
+        assert "1 个警告" in streams.err and "S003" in streams.err
+
+    @pytest.mark.parametrize("heading", [None, "参考文献", "绪论"])
+    def test_unavailable_or_missing_input_has_empty_stdout(self, tmp_path, capsys, heading):
+        args = ["--format", "fixed"]
+        if heading:
+            args.append(str(_make_docx(tmp_path / "empty.docx", [], heading)))
+        assert main(args) == 2
+        streams = capsys.readouterr()
+        assert streams.out == ""
+        assert streams.err.strip()
+
+
 class TestUsageErrors:
     def test_help_is_utf8_in_windows_subprocess(self):
         completed = subprocess.run(

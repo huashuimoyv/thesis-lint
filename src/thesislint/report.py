@@ -35,6 +35,11 @@ class Report:
     citations: CitationCheck | None = None
 
     @property
+    def preserve_reference_numbers(self) -> bool:
+        """有正文时保留文献编号，包括正文引用无法可靠映射的情况。"""
+        return bool(self.citations and (self.citations.has_body or self.citations.citations))
+
+    @property
     def unavailable_reason(self) -> str | None:
         """未完成检查的原因；不把提取失败算作文献格式错误。"""
         if not self.found_section:

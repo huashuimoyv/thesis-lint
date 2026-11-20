@@ -909,9 +909,7 @@ class App:
                 "warns": report.warn_count,
             }
             entries = tuple(entry.text for entry in report.entries)
-            preserve_numbers = bool(
-                report.citations and (report.citations.has_body or report.citations.citations)
-            )
+            preserve_numbers = report.preserve_reference_numbers
             self._post_ui(
                 lambda: self._finish(
                     job_id,

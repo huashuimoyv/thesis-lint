@@ -18,6 +18,7 @@ from docx import Document
 from .checker import ERROR, check_entries
 from .citations import check_citations
 from .extractor import find_bibliography_in_document
+from .fixer import fix_entries
 from .report import EntryResult, Report, build_json_report, build_markdown_report, build_text_report
 
 
@@ -57,6 +58,25 @@ def _force_utf8_stdio() -> None:
                 stream.reconfigure(encoding="utf-8", errors="replace")
 
 
+def _print_fixed(report: Report) -> None:
+    result = fix_entries(
+        [entry.text for entry in report.entries], renumber=not report.preserve_reference_numbers
+    )
+    print("\n".join(result["lines"]))
+    if report.error_count or report.warn_count:
+        print(
+            f"原文检查：{report.error_count} 个错误，{report.warn_count} 个警告。", file=sys.stderr
+        )
+    for item in result["results"]:
+        if item.unresolved:
+            print(f"第 {item.index} 条：{'；'.join(item.unresolved)}", file=sys.stderr)
+    for issue in report.section_issues:
+        print(f"{issue.code} {issue.message}", file=sys.stderr)
+    if report.citations:
+        for issue in report.citations.issues:
+            print(f"{issue.code} {issue.message}", file=sys.stderr)
+
+
 def main(argv: list[str] | None = None) -> int:
     # argparse 的 --help 与用法错误会在 parse_args 内直接输出，必须在建 parser 前设置编码。
     _force_utf8_stdio()
@@ -67,7 +87,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("docx", type=Path, nargs="?", help="待检查的 .docx 文件")
     parser.add_argument("--section", default="参考文献", help="参考文献章节标题（默认“参考文献”）")
-    parser.add_argument("--format", choices=["text", "md", "json"], default="text", help="输出格式")
+    parser.add_argument(
+        "--format",
+        choices=["text", "md", "json", "fixed"],
+        default="text",
+        help="输出格式；fixed 输出每行一条的修正列表",
+    )
     parser.add_argument("--strict", action="store_true", help="存在警告时同样返回非零退出码")
 
     raw = list(sys.argv[1:]) if argv is None else list(argv)
@@ -85,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(raw)
 
     if args.docx is None:
-        parser.print_help()
+        parser.print_help(file=sys.stderr if args.format == "fixed" else sys.stdout)
         return 2
 
     if args.docx.suffix.lower() != ".docx":
@@ -104,7 +129,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"无法解析文档：{exc}", file=sys.stderr)
         return 2
 
-    if args.format == "json":
+    if args.format == "fixed":
+        if report.unavailable_reason:
+            print(report.unavailable_reason, file=sys.stderr)
+            return 2
+        _print_fixed(report)
+    elif args.format == "json":
         print(build_json_report(report))
     elif args.format == "md":
         print(build_markdown_report(report))

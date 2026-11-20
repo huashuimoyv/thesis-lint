@@ -135,6 +135,12 @@ def verify_portable(command: list[str]) -> list[str]:
                 )
                 completed.append(scenario)
 
+        scenario = "fixed output"
+        result = _invoke(command, [str(warning_path), "--format", "fixed", "--strict"], scenario, 1)
+        _require(result.stdout.splitlines() == [entries[0]], scenario, "incorrect fixed text")
+        _require("1 个警告" in result.stderr, scenario, "missing source warning count")
+        completed.append(scenario)
+
         scenario = "corrupt document"
         result = _invoke(command, [str(corrupt_path), "--format", "json"], scenario, 2)
         _require(
