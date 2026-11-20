@@ -230,8 +230,9 @@ class TestShouldLaunchGui:
 class TestCliStillWorks:
     """确保 GUI 分发没有破坏命令行行为。"""
 
-    def test_main_with_args_returns_report(self, capsys):
-        # 带参数：不应该进入 GUI（_supports_tk 即便为 True 也不走）
+    def test_main_with_args_returns_report(self, monkeypatch):
+        # 此用例模拟从终端输入文件名，独立于 Windows runner 的控制台进程数。
+        monkeypatch.setattr(gui, "_launched_from_explorer", lambda: False)
         code = main(["nonexistent.docx"])
         assert code == 2
 

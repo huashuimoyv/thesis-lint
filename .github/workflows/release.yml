@@ -19,6 +19,7 @@ jobs:
   build-windows-portable:
     needs: quality
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -49,9 +50,23 @@ jobs:
           print(f"OK: version matches v{actual}")
 
       - name: Run tests
+        timeout-minutes: 10
         env:
           THESISLINT_RUN_GUI_TESTS: "1"
-        run: pytest -q
+        shell: pwsh
+        run: |
+          python -m pytest -q -x --ignore=tests/test_gui_live.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # 每个窗口用例独占一个 Python/Tcl 进程，避免上一个窗口的拖拽注册或事件循环干扰下一项。
+          $collected = python -m pytest --collect-only -q --no-cov tests/test_gui_live.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $cases = @($collected | Where-Object { $_ -match '^tests[/\\]test_gui_live\.py::' })
+          if (!$cases.Count) { throw 'No Windows GUI tests collected' }
+          foreach ($case in $cases) {
+            Write-Host $case
+            python -m pytest -q --no-cov $case
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Build single-file executable
         run: pyinstaller --onefile --clean --noconfirm --name thesislint build/portable_entry.py
